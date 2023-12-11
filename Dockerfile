@@ -41,7 +41,7 @@ RUN pip install -U pip  \
     -f /wheels \
     && rm -rf /wheels
 
-RUN git clone git clone https://github.com/facebookresearch/differentiable-robot-model.git && \
+RUN git clone https://github.com/facebookresearch/differentiable-robot-model.git && \
     cd differentiable-robot-model && \
     python setup.py develop
 
