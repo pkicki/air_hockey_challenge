@@ -133,8 +133,12 @@ def experiment(env: str = '7dof-hit',
             },
             "Training": {
                 "E": E, "V": V, "alpha": alpha,
-            }
+            },
         }, step=epoch)
+        if hasattr(agent, "get_alphas"):
+            wandb.log({
+            "alphas": {str(i): a for i, a in enumerate(agent.get_alphas())}
+            }, step=epoch)
         if best_success <= success:
             best_success = success
             logger.log_agent(agent)

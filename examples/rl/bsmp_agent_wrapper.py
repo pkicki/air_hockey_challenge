@@ -106,5 +106,8 @@ class BSMPAgent(AgentBase):
     def update_alphas(self):
         self.bsmp_agent.update_alphas()
 
+    def get_alphas(self):
+        return self.bsmp_agent.alphas
+
     def preprocess(self, state):
         return state
