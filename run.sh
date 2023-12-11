@@ -5,7 +5,7 @@ xhost + local:root
 docker run -it \
     --env="DISPLAY" \
     --volume="/tmp/.X11-unix:/tmp/.X11-unix:ro" \
-    --volume="$(pwd)/..:/air_hockey_challenge" \
+    --volume="$(pwd):/air_hockey_challenge" \
     --privileged \
     --network=host \
     --name=ahc \

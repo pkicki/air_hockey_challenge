@@ -24,10 +24,10 @@ RUN pip install -U pip  \
 
 FROM base as eval
 COPY --from=pip-build /wheels /wheels
-WORKDIR /src
+#WORKDIR /src
 
 ENV TZ=Europe/Berlin
-ENV PYTHONPATH=/src/2023-challenge
+ENV PYTHONPATH=/air_hockey_challenge
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -48,7 +48,7 @@ RUN git clone https://github.com/facebookresearch/differentiable-robot-model.git
 # experiment launcher hotfix
 RUN sed -i "28 i \ \ \ \ except ValueError:\n\ \ \ \ \ \ \ \ args['git_hash'] = ''\n\ \ \ \ \ \ \ \ args['git_url'] = ''" /usr/local/lib/python3.8/dist-packages/experiment_launcher/utils.py
 
-COPY . 2023-challenge/
+#COPY . 2023-challenge/
 
 #CMD ["python", "2023-challenge/run.py"]
 
