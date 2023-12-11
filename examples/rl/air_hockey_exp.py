@@ -1,4 +1,4 @@
-import os
+import os, sys
 
 import numpy as np
 import torch.nn.functional as F
@@ -6,6 +6,9 @@ import torch.optim as optim
 import torch.random
 import wandb
 from experiment_launcher import run_experiment, single_experiment
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', )))
 
 from air_hockey_challenge.framework.air_hockey_challenge_wrapper import AirHockeyChallengeWrapper
 from air_hockey_challenge.framework.challenge_core import ChallengeCore
@@ -39,8 +42,8 @@ def experiment(env: str = '7dof-hit',
                #n_steps_per_fit: int = 5,
                n_steps: int = None,
                n_steps_per_fit: int = None,
-               n_episodes: int = 2,
-               n_episodes_per_fit: int = 2,
+               n_episodes: int = 1,
+               n_episodes_per_fit: int = 1,
                quiet: bool = True,
                render: bool = True,
                n_eval_episodes: int = 3,
@@ -86,6 +89,8 @@ def experiment(env: str = '7dof-hit',
 
     kwargs['interpolation_order'] = interpolation_order
     kwargs['debug'] = True
+    kwargs["moving_init"] = False
+    kwargs["horizon"] = 250
     mdp = mdp_builder(env, kwargs)
 
     agent = agent_builder(mdp.env_info, locals())
@@ -101,6 +106,8 @@ def experiment(env: str = '7dof-hit',
         core.learn(n_steps=n_steps, n_steps_per_fit=n_steps_per_fit,
                    n_episodes=n_episodes, n_episodes_per_fit=n_episodes_per_fit, quiet=quiet)
 
+        if hasattr(agent, "update_alphas"):
+            agent.update_alphas()
         # Evaluate
         J, R, success, c_avg, c_max, E, V, alpha = compute_metrics(core, eval_params)
 
@@ -146,7 +153,7 @@ def experiment(env: str = '7dof-hit',
 
 def mdp_builder(env, kwargs):
     settings = {}
-    keys = ["gamma", "horizon", "debug", "interpolation_order"]
+    keys = ["gamma", "horizon", "debug", "interpolation_order", "moving_init"]
 
     for key in keys:
         if key in kwargs.keys():

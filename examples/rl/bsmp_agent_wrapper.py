@@ -103,6 +103,8 @@ class BSMPAgent(AgentBase):
                             self.q_log_t_cps_mu_list, self.distribution_list, **info)
         self.reset_dataset()
 
+    def update_alphas(self):
+        self.bsmp_agent.update_alphas()
 
     def preprocess(self, state):
         return state
