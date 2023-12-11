@@ -42,7 +42,7 @@ RUN pip install -U pip  \
     && rm -rf /wheels
 
 RUN git clone git clone https://github.com/facebookresearch/differentiable-robot-model.git && \
-    cd differentiable-robot-model && \\
+    cd differentiable-robot-model && \
     python setup.py develop
 
 COPY . 2023-challenge/
