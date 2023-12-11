@@ -9,26 +9,41 @@ from experiment_launcher import run_experiment, single_experiment
 
 from air_hockey_challenge.framework.air_hockey_challenge_wrapper import AirHockeyChallengeWrapper
 from air_hockey_challenge.framework.challenge_core import ChallengeCore
-from examples.rl.atacom_agent_wrapper import ATACOMAgent, build_ATACOM_Controller
-from examples.rl.network import SACActorNetwork, SACCriticNetwork
-from examples.rl.rewards import HitReward, DefendReward, PrepareReward
-from examples.rl.rl_agent_wrapper import RlAgent
+from atacom_agent_wrapper import ATACOMAgent, build_ATACOM_Controller
+from network import SACActorNetwork, SACCriticNetwork
+from rewards import HitReward, DefendReward, PrepareReward
+from rl_agent_wrapper import RlAgent
+from bsmp_agent_wrapper import BSMPAgent
+from bsmp.agent import BSMP
 from mushroom_rl.algorithms.actor_critic import SAC
 from mushroom_rl.core import Logger, Agent
 from mushroom_rl.utils.dataset import compute_J, compute_episodes_length, parse_dataset
 from mushroom_rl.utils.frames import LazyFrames
 from mushroom_rl.utils.preprocessors import MinMaxPreprocessor
+from mushroom_rl.utils.optimizers import AdaptiveOptimizer
 
+def custom_repr(self):
+    return f'{{Tensor:{tuple(self.shape)}}} {original_repr(self)}'
+
+original_repr = torch.Tensor.__repr__
+torch.Tensor.__repr__ = custom_repr
 
 @single_experiment
 def experiment(env: str = '7dof-hit',
-               alg: str = "atacom-sac",
-               n_steps: int = 50000,
-               n_epochs: int = 100,
+               n_epochs: int = 100000,
+               alg: str = "bsmp",
+               #alg: str = "atacom-sac",
+               #n_steps: int = 50000,
+               #n_epochs: int = 100,
+               #n_steps: int = 50,
+               #n_steps_per_fit: int = 5,
+               n_steps: int = None,
+               n_steps_per_fit: int = None,
+               n_episodes: int = 2,
+               n_episodes_per_fit: int = 2,
                quiet: bool = True,
-               n_steps_per_fit: int = 1,
-               render: bool = False,
-               n_eval_episodes: int = 10,
+               render: bool = True,
+               n_eval_episodes: int = 3,
 
                actor_lr: float = 1e-4,
                critic_lr: float = 3e-4,
@@ -60,8 +75,8 @@ def experiment(env: str = '7dof-hit',
 
     logger = Logger(log_name=env, results_dir=results_dir, seed=seed)
 
-    wandb_run = wandb.init(project="air_hockey_challenge", config=configs, dir=results_dir, name=f"seed_{seed}",
-               group=f'{env}_{alg}_acc-{double_integration}', tags=[str(env), str(slack_beta)])
+    #wandb_run = wandb.init(project="air_hockey_challenge", config=configs, dir=results_dir, name=f"seed_{seed}",
+    #           group=f'{env}_{alg}_acc-{double_integration}', tags=[str(env), str(slack_beta)])
 
     eval_params = {
         "n_episodes": n_eval_episodes,
@@ -80,7 +95,11 @@ def experiment(env: str = '7dof-hit',
     best_success = -np.inf
 
     for epoch in range(n_epochs):
-        core.learn(n_steps=n_steps, n_steps_per_fit=n_steps_per_fit, quiet=quiet)
+        if hasattr(agent, "reset_dataset"):
+            agent.reset_dataset()
+        print("Epoch: ", epoch)
+        core.learn(n_steps=n_steps, n_steps_per_fit=n_steps_per_fit,
+                   n_episodes=n_episodes, n_episodes_per_fit=n_episodes_per_fit, quiet=quiet)
 
         # Evaluate
         J, R, success, c_avg, c_max, E, V, alpha = compute_metrics(core, eval_params)
@@ -175,6 +194,10 @@ def agent_builder(env_info, kwargs):
         atacom = build_ATACOM_Controller(env_info, **kwargs)
         return ATACOMAgent(env_info, kwargs["double_integration"], sac_agent, atacom)
 
+    if alg == "bsmp":
+        bsmp_agent = build_agent_BSMP(env_info, **kwargs)
+        return BSMPAgent(env_info, bsmp_agent)
+
 
 def build_agent_SAC(env_info, alg, actor_lr, critic_lr, n_features, batch_size,
                     initial_replay_size, max_replay_size, tau,
@@ -234,6 +257,41 @@ def build_agent_SAC(env_info, alg, actor_lr, critic_lr, n_features, batch_size,
 
     prepro = MinMaxPreprocessor(env_info["rl_info"])
     agent.add_preprocessor(prepro)
+    return agent
+
+
+def build_agent_BSMP(env_info, alg, actor_lr, critic_lr, n_features, batch_size,
+                    **kwargs):
+    if type(n_features) is str:
+        n_features = list(map(int, n_features.split(" ")))
+
+    # TODO: add parameter regarding the constraint loss stuff
+    alg_params = dict(
+        n_q_cps=11,
+        n_t_cps=20,
+        n_dim=7,
+        n_pts_fixed_begin=2,
+        n_pts_fixed_end=0,
+        sigma_init=0.1,
+        constraint_lr=1e-2,
+        mu_lr=5e-5,
+        sigma_eps=1e-2,
+    )
+
+    # TODO: rename the learning rate attributes
+    table_constraints = env_info["constraints"].get("ee_constr")
+    robot_constraints = dict(
+        q = env_info["robot"]["joint_pos_limit"][-1],
+        q_dot = env_info["robot"]["joint_vel_limit"][-1],
+        q_ddot = env_info["robot"]["joint_acc_limit"][-1],
+        z_ee = (table_constraints.z_lb + table_constraints.z_ub) / 2.,
+        x_ee_lb = table_constraints.x_lb,
+        y_ee_lb = table_constraints.y_lb,
+        y_ee_ub = table_constraints.y_ub,
+    )
+
+
+    agent = BSMP(env_info['rl_info'], robot_constraints, **alg_params)
     return agent
 
 
