@@ -72,8 +72,8 @@ class BSMP(Agent):
         self.q_log_t_cps_sigma_trainable = np.log(sigma_init * np.ones((self._n_trainable_pts,)))
         self.sigma_optimizer = AdaptiveOptimizer(eps=sigma_eps)
 
-        urdf_path = os.path.join(os.path.dirname(__file__), "iiwa_striker.urdf")
-        self.robot = DifferentiableRobotModel(urdf_path=urdf_path, name="iiwa", device="cpu")
+        self.urdf_path = os.path.join(os.path.dirname(__file__), "iiwa_striker.urdf")
+        self.load_robot()
 
         super().__init__(mdp_info, None, None)
 
@@ -91,10 +91,17 @@ class BSMP(Agent):
                             alphas='numpy',
                             violation_limits='numpy',
                             constraint_lr='primitive',
-                            policy_optimizer='torch',
                             sigma_optimizer='torch',
                             mu_approximator='mushroom',
+                            mu_optimizer='torch',
+                            robot_constraints='pickle',
+                            urdf_path='primitive',
+                            constraint_losses='pickle',
+                            constraint_losses_log='pickle',
                             )
+
+    def load_robot(self):
+        self.robot = DifferentiableRobotModel(urdf_path=self.urdf_path, name="iiwa", device="cpu")
 
     def _unpack_qt(self, qt, trainable=False):
         n_q_pts = self._n_trainable_q_pts if trainable else self._n_q_pts

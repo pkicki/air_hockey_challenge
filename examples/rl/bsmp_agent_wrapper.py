@@ -49,7 +49,10 @@ class BSMPAgent(AgentBase):
             _vel_limit='numpy',
             _acc_limit='numpy',
             _init_pos='numpy',
+            _planner_calls='primitive',
+            _iteration='primitive',
             rl_agent='pickle',
+            bsmp_agent='mushroom',
             env_info='pickle'
         )
 
