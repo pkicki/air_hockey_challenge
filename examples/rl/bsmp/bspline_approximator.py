@@ -68,7 +68,8 @@ class BSplineApproximatorNDoF(BSplineApproximator):
     def normalize_input(self, x):
         low = torch.Tensor(self.input_space.low)
         high = torch.Tensor(self.input_space.high)
-        return (x - low) / (high - low)
+        normalized = (x - low) / (high - low)
+        return 2 * normalized - 1
 
     def prepare_data(self, x):
         q0, qd, dq0, dqd, ddq0, ddqd = unpack_data_ndof(x)
