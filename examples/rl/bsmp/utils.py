@@ -21,12 +21,13 @@ def unpack_data_airhockey(x):
     puck_dot = x[..., 3:6]
     q0 = x[..., 6:n+6]
     dq0 = x[..., n+6:2*n+6]
+    opponent_mallet = x[..., 2*n+6:2*n+9]
     z = torch.zeros_like(dq0)
     ddq0 = z
     qk = z
     dqk = z
     ddqk = z
-    return puck, puck_dot, q0, qk, dq0, dqk, ddq0, ddqk
+    return puck, puck_dot, q0, qk, dq0, dqk, ddq0, ddqk, opponent_mallet
 
 def unpack_data_ndof(x, n=7):
     q0 = x[..., :n]
