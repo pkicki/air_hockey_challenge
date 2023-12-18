@@ -11,7 +11,6 @@ from joblib import Parallel, delayed
 from air_hockey_challenge.framework.air_hockey_challenge_wrapper import AirHockeyChallengeWrapper
 from air_hockey_challenge.framework.challenge_core import ChallengeCore
 from mushroom_rl.core import Logger
-from mushroom_rl.utils.dataset import compute_episodes_length
 
 PENALTY_POINTS = {"joint_pos_constr": 2, "ee_constr": 3, "link_constr": 3, "joint_vel_constr": 1,
                   "computation_time_minor": 0.5, "computation_time_middle": 1, "computation_time_major": 2}
@@ -204,14 +203,14 @@ def _evaluate(log_dir, env, agent_builder, init_states, quiet, render, episode_o
 
 
 def compute_metrics(core, eval_params, episode_offset):
-    dataset, dataset_info = core.evaluate(**eval_params, get_env_info=True)
+    dataset = core.evaluate(**eval_params)
 
-    episode_length = compute_episodes_length(dataset)
+    episode_length = dataset.episodes_length
     n_episodes = len(episode_length)
 
     # Turn list of dicts to dict of lists
-    constraints_dict = {k: [dic[k] for dic in dataset_info["constraints_value"]] for k in
-                        dataset_info["constraints_value"][0]}
+    constrants_dict = {k: [dic[k] for dic in dataset.info["constraints_value"]] for k in
+                        dataset.info["constraints_value"][0]}
     success = 0
     penalty_sum = 0
     current_idx = 0
@@ -221,15 +220,15 @@ def compute_metrics(core, eval_params, episode_offset):
     # Iterate over episodes
     for episode_len in episode_length:
         # Only check last step of episode for success
-        success += dataset_info["success"][current_idx + episode_len - 1]
+        success += dataset.info["success"][current_idx + episode_len - 1]
 
         for name in constraints_dict.keys():
             if np.any(np.array(constraints_dict[name][current_idx: current_idx + episode_len]) > 0):
                 penalty_sum += PENALTY_POINTS[name]
                 violations["Episode " + str(current_eps)].append(name + " violated")
 
-        max_time_violations = np.max(dataset_info["computation_time"][current_idx: current_idx + episode_len])
-        mean_time_violations = np.mean(dataset_info["computation_time"][current_idx: current_idx + episode_len])
+        max_time_violations = np.max(dataset.info["computation_time"][current_idx: current_idx + episode_len])
+        mean_time_violations = np.mean(dataset.info["computation_time"][current_idx: current_idx + episode_len])
         if max_time_violations > 0.2 or mean_time_violations > 0.02:
             penalty_sum += PENALTY_POINTS["computation_time_major"]
             if max_time_violations > 0.2:
@@ -250,7 +249,7 @@ def compute_metrics(core, eval_params, episode_offset):
 
     success = success / n_episodes
 
-    return dataset, success, penalty_sum, constraints_dict, dataset_info["computation_time"], violations
+    return dataset, success, penalty_sum, constraints_dict, dataset.info["computation_time"], violations
 
 
 def compute_seed(seed, i):

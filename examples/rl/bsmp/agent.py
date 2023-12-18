@@ -4,16 +4,17 @@ from time import perf_counter
 
 from mushroom_rl.core import Agent
 from mushroom_rl.distributions import GaussianDiagonalDistribution
-from mushroom_rl.utils. dataset import compute_J
-from mushroom_rl.utils.optimizers import AdaptiveOptimizer
+from mushroom_rl.rl_utils.optimizers import AdaptiveOptimizer
 from mushroom_rl.approximators import Regressor
 from mushroom_rl.approximators.parametric import TorchApproximator
+from mushroom_rl.policy.gaussian_policy import DiagonalGaussianPolicy
+from mushroom_rl.utils.torch import TorchUtils
 
 import torch
 import numpy as np
 from scipy.interpolate import interp1d
 from bsmp.bspline import BSpline
-from bsmp.bspline_approximator import BSplineApproximatorAirHockey, BSplineApproximatorAirHockeyWrapper
+from bsmp.bspline_approximator import BSplineApproximatorAirHockey, BSplineApproximatorAirHockeySeparatedWrapper, BSplineApproximatorAirHockeyWrapper
 from bsmp.utils import equality_loss, limit_loss
 
 from differentiable_robot_model.robot_model import DifferentiableKUKAiiwa, DifferentiableRobotModel
@@ -54,9 +55,9 @@ class BSMP(Agent):
         self.constraint_losses_log = []
 
         self.mu_approximator = Regressor(TorchApproximator,
+                         #network=BSplineApproximatorAirHockeySeparatedWrapper,
                          network=BSplineApproximatorAirHockeyWrapper,
                          batch_size=1,
-                         use_cuda=False,
                          params={"q_bsp": self._q_bsp,
                                  "t_bsp": self._t_bsp,
                                  "n_dim": self._n_dim,
@@ -75,7 +76,11 @@ class BSMP(Agent):
         self.urdf_path = os.path.join(os.path.dirname(__file__), "iiwa_striker.urdf")
         self.load_robot()
 
-        super().__init__(mdp_info, None, None)
+        #self._states = []
+        #self._mus = []
+        policy = DiagonalGaussianPolicy(self.mu_approximator, self.q_log_t_cps_sigma_trainable)
+
+        super().__init__(mdp_info, policy)
 
         self._add_save_attr(q_log_t_cps_sigma_trainable='numpy',
                             _q_bsp='pickle',
@@ -166,15 +171,15 @@ class BSMP(Agent):
 
     def query_mu_approximator(self, state):
         state = state.astype(np.float32)
-        q_cps_mu, t_cps_mu = self.mu_approximator.model.network(torch.from_numpy(state[np.newaxis]).cuda()
-                                                                if self.mu_approximator.model._use_cuda else
-                                                                torch.from_numpy(state[np.newaxis]))
+        q_cps_mu, t_cps_mu = self.mu_approximator.model.network(torch.from_numpy(state[np.newaxis]).to(TorchUtils.get_device()))
         return q_cps_mu, t_cps_mu
 
     def compute_trajectory(self, state):
         q_cps_mu, log_t_cps_mu = self.query_mu_approximator(state)
         q_cps_mu = q_cps_mu[0].cpu()
         log_t_cps_mu = log_t_cps_mu[0].cpu()
+        #self._states.append(state)
+        #self._mus.append(q_cps_mu.detach().numpy())
 
         q_cps_mu_trainable = q_cps_mu[self._n_pts_fixed_begin:].reshape(-1)
         if self._n_pts_fixed_end:
@@ -214,7 +219,7 @@ class BSMP(Agent):
         return action
 
     def fit(self, dataset, theta_list, q_log_t_cps_mu_trainable_list, q_log_t_cps_mu_list, distribution_list, **info):
-        Jep = compute_J(dataset, self.mdp_info.gamma)
+        Jep = dataset.discounted_return
 
         Jep = np.array(Jep)
         theta = np.array(theta_list)
@@ -263,11 +268,8 @@ class BSMP(Agent):
             q_dot_loss = limit_loss(torch.abs(q_dot), dt_, q_dot_limits)
             q_ddot_loss = limit_loss(torch.abs(q_ddot), dt_, q_ddot_limits)
 
-            # TODO add computation of the table plane loss
-            #ee_pos, ee_quat = self.robot.compute_forward_kinematics(q.reshape((-1, self._n_dim)), "iiwa_link_ee")
             q_ = q.reshape((-1, self._n_dim))
             q_ = torch.cat([q_, torch.zeros((q_.shape[0], 9 - q_.shape[1]))], dim=-1)
-            #ee_pos, ee_quat = self.robot.compute_forward_kinematics(q_, "F_striker_mallet_tip")
             ee_pos, ee_quat = self.robot.compute_forward_kinematics(q_, "F_striker_tip")
             ee_pos = ee_pos.reshape((q.shape[0], q.shape[1], 3))
             ee_quat = ee_quat.reshape((q.shape[0], q.shape[1], 4))

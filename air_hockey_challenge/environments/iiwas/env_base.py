@@ -7,7 +7,7 @@ from scipy.spatial.transform import Rotation as R
 from air_hockey_challenge.environments.data.iiwas import __file__ as env_path
 from air_hockey_challenge.utils.universal_joint_plugin import UniversalJointPlugin
 from mushroom_rl.environments.mujoco import MuJoCo, ObservationType
-from mushroom_rl.utils.spaces import Box
+from mushroom_rl.rl_utils.spaces import Box
 
 
 """

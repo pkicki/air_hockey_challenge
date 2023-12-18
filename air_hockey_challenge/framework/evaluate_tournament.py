@@ -316,22 +316,22 @@ def _run_single_tournament(log_dir, agent_builder, name_1, name_2, n_steps, quie
 
 
 def compute_metrics(core, eval_params):
-    dataset, dataset_info = core.evaluate(**eval_params, get_env_info=True)
-    score = dataset_info["score"][-1]
-    faults = dataset_info["faults"][-1]
+    dataset = core.evaluate(**eval_params)
+    score = dataset.info["score"][-1]
+    faults = dataset.info["faults"][-1]
 
     constraints_dict_1 = {}
     constraints_dict_2 = {}
 
-    for key in dataset_info["constraints_value"][0][0]:
+    for key in dataset.info["constraints_value"][0][0]:
         constraints_dict_1[key] = []
         constraints_dict_2[key] = []
-        for dict in dataset_info["constraints_value"]:
+        for dict in dataset.info["constraints_value"]:
             constraints_dict_1[key].append(dict[0][key])
             constraints_dict_2[key].append(dict[1][key])
 
-    jerk = np.array(dataset_info["jerk"])
-    computation_time = np.array(dataset_info["computation_time"])
+    jerk = np.array(dataset.info["jerk"])
+    computation_time = np.array(dataset.info["computation_time"])
 
     n_steps = len(dataset)
     episode_size = 500

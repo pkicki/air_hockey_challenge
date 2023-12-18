@@ -2,13 +2,14 @@ import numpy as np
 
 from air_hockey_challenge.framework import AgentBase
 from mushroom_rl.core import Agent
+from mushroom_rl.policy.policy import Policy
 
 
 class RlAgent(AgentBase):
     def __init__(self, env_info, double_integration, rl_agent: Agent):
         self.env_info = env_info
         self.rl_agent = rl_agent
-        super().__init__(env_info)
+        super().__init__(env_info, Policy())
 
         self._double_integration = double_integration
         self._k_pos = 5

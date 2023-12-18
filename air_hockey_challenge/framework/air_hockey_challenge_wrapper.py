@@ -84,8 +84,10 @@ class AirHockeyChallengeWrapper(Environment):
 
         return obs, reward, done, info
 
-    def render(self):
-        self.base_env.render()
+    def render(self, record=False):
+        frame = self.base_env.render()
+        if record:
+            return frame
 
     def reset(self, state=None):
         return self.base_env.reset(state)

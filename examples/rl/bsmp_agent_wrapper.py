@@ -22,7 +22,7 @@ class BSMPAgent(AgentBase):
     def __init__(self, env_info, bsmp_agent: Agent):
         self.env_info = env_info
         self.bsmp_agent = bsmp_agent
-        super().__init__(env_info)
+        super().__init__(env_info, is_episodic=True)
 
         self._dt = env_info["dt"]
 
@@ -86,6 +86,8 @@ class BSMPAgent(AgentBase):
         vel = self.q_dot(time)
         acc = self.q_ddot(time)
         self._iteration += 1
+        #return np.hstack([pos, vel])
+        #return np.vstack([pos, vel])
         return np.vstack([pos, vel, acc])
 
     def reset(self):

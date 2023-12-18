@@ -28,9 +28,9 @@ class ChallengeCore(Core):
             self.action_idx = action_idx
         else:
             if is_tournament:
-                self.action_idx = (np.arange(self.mdp.base_env.action_shape[0][0]), np.arange(self.mdp.base_env.action_shape[1][0]))
+                self.action_idx = (np.arange(self.env.base_env.action_shape[0][0]), np.arange(self.env.base_env.action_shape[1][0]))
             else:
-                self.action_idx = np.arange(self.mdp.base_env.action_shape[0][0])
+                self.action_idx = np.arange(self.env.base_env.action_shape[0][0])
 
         self.is_tournament = is_tournament
         self.time_limit = time_limit
@@ -38,13 +38,15 @@ class ChallengeCore(Core):
         self.prev_action = None
         self.init_state = init_state
 
-    def _step(self, render):
+    def _step(self, render, record):
         """
         Single step.
 
         Args:
             render (bool):
                 whether to render or not.
+            record (bool):
+                whether to record the rendered frame or not.
 
         Returns:
             A tuple containing the previous state, the action sampled by the
@@ -68,7 +70,7 @@ class ChallengeCore(Core):
             action = (action_1, action_2)
             duration = [time_1, time_2]
 
-            next_state, reward, absorbing, step_info = self.mdp.step(
+            next_state, reward, absorbing, step_info = self.env.step(
                 (action[0][self.action_idx[0]], action[1][self.action_idx[1]]))
 
         else:
@@ -76,23 +78,36 @@ class ChallengeCore(Core):
             action = self.agent.draw_action(self._state)
             end_time = time.time()
             duration = (end_time - start_time)
+            #print("AGENT STEP TIME: ", duration)
 
             # If there is an index error here either the action shape does not match the interpolation type or
             # the custom action_idx is wrong
-            next_state, reward, absorbing, step_info = self.mdp.step(action[self.action_idx])
+            #t0 = time.perf_counter()
+            next_state, reward, absorbing, step_info = self.env.step(action[self.action_idx])
+            #t1 = time.perf_counter()
+            #print("ENV STEP TIME: ", t1 - t0)
 
         step_info["computation_time"] = duration
         self._episode_steps += 1
 
         if render:
-            self.mdp.render()
+            frame = self.env.render(record)
+
+            if record:
+                self._record(frame)
 
         last = not (
-                self._episode_steps < self.mdp.info.horizon and not absorbing)
+                self._episode_steps < self.env.info.horizon and not absorbing)
 
         state = self._state
         next_state = self._preprocess(next_state.copy())
         self._state = next_state
+
+        # Hotfix for the action storage in the dataset for not tournament environment
+        # Definitely will not work for the tournament environment
+        # TODO: Fix this by adding a different type of the dataset or by proper reshaping of the action
+        # and reporting flattened shapes while creating enviornment
+        action = np.reshape(action[:2], (-1,))
 
         return (state, action, reward, next_state, absorbing, last), step_info
 

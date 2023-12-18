@@ -2,23 +2,23 @@ import copy
 
 from air_hockey_challenge.utils.kinematics import forward_kinematics
 from mushroom_rl.core import Agent
+from mushroom_rl.policy.policy import Policy
 
 
 class AgentBase(Agent):
-    def __init__(self, env_info, agent_id=1, **kwargs):
+    def __init__(self, env_info, is_episodic=False, agent_id=1, **kwargs):
         """
         Initialization of the Agent.
 
         Args:
             env_info [dict]:
                 A dictionary contains information about the environment;
+            is_episodic [bool, default False]:
+                whether the agent is learning in an episodic fashion or not;
             agent_id [int, default 1]:
                 1 by default, agent_id will be used for the tournament;
-            kwargs [dict]:
-                A dictionary contains agent related information.
-
         """
-        super().__init__(env_info['rl_info'], None)
+        super().__init__(env_info['rl_info'], Policy(), is_episodic=is_episodic)
         self.env_info = env_info
         self.agent_id = agent_id
         self.robot_model = copy.deepcopy(env_info['robot']['robot_model'])
@@ -57,9 +57,20 @@ class AgentBase(Agent):
         """
 
         raise NotImplementedError
+    
+    def episode_start(self, initial_state, episode_info):
+        """
+        Called by the Core when a new episode starts.
 
-    def episode_start(self):
-        self.reset()
+        Args:
+            initial_state (array): vector representing the initial state of the environment.
+            episode_info (dict): a dictionary containing the information at reset, such as context.
+
+        Returns:
+            A tuple containing the policy initial state and, optionally, the policy parameters
+
+        """
+        return self.reset(), None
 
     @classmethod
     def load_agent(cls, path, env_info, agent_id=1):

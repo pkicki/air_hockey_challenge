@@ -20,10 +20,10 @@ from bsmp_agent_wrapper import BSMPAgent
 from bsmp.agent import BSMP
 from mushroom_rl.algorithms.actor_critic import SAC
 from mushroom_rl.core import Logger, Agent
-from mushroom_rl.utils.dataset import compute_J, compute_episodes_length, parse_dataset
+from mushroom_rl.rl_utils.spaces import Box
 from mushroom_rl.utils.frames import LazyFrames
-from mushroom_rl.utils.preprocessors import MinMaxPreprocessor
-from mushroom_rl.utils.optimizers import AdaptiveOptimizer
+from mushroom_rl.rl_utils.preprocessors import MinMaxPreprocessor
+from mushroom_rl.utils.torch import TorchUtils
 
 def custom_repr(self):
     return f'{{Tensor:{tuple(self.shape)}}} {original_repr(self)}'
@@ -78,6 +78,9 @@ def experiment(env: str = '7dof-hit',
 
     logger = Logger(log_name=env, results_dir=results_dir, seed=seed)
 
+    if use_cuda:
+        TorchUtils.set_default_device('cuda')
+
     #wandb_run = wandb.init(project="air_hockey_challenge", config=configs, dir=results_dir, name=f"seed_{seed}",
     #           group=f'{env}_{alg}_acc-{double_integration}', tags=[str(env), str(slack_beta)])
 
@@ -91,11 +94,10 @@ def experiment(env: str = '7dof-hit',
     kwargs['debug'] = True
     kwargs["moving_init"] = False
     kwargs["horizon"] = 250
-    mdp = mdp_builder(env, kwargs)
+    env = env_builder(env, kwargs)
 
-    agent = agent_builder(mdp.env_info, locals())
-
-    core = ChallengeCore(agent, mdp, action_idx=[0, 1])
+    agent = agent_builder(env.env_info, locals())
+    core = ChallengeCore(agent, env, action_idx=[0, 1])
 
     best_success = -np.inf
 
@@ -145,7 +147,7 @@ def experiment(env: str = '7dof-hit',
 
     agent = Agent.load(os.path.join(logger.path, f"agent-{seed}.msh"))
 
-    core = ChallengeCore(agent, mdp, action_idx=[0, 1])
+    core = ChallengeCore(agent, env, action_idx=[0, 1])
 
     eval_params["n_episodes"] = 20
     J, R, best_success, c_avg, c_max, E, V, alpha = compute_metrics(core, eval_params)
@@ -155,7 +157,7 @@ def experiment(env: str = '7dof-hit',
     wandb_run.finish()
 
 
-def mdp_builder(env, kwargs):
+def env_builder(env, kwargs):
     settings = {}
     keys = ["gamma", "horizon", "debug", "interpolation_order", "moving_init"]
 
@@ -212,12 +214,11 @@ def agent_builder(env_info, kwargs):
 
 def build_agent_SAC(env_info, alg, actor_lr, critic_lr, n_features, batch_size,
                     initial_replay_size, max_replay_size, tau,
-                    warmup_transitions, lr_alpha, target_entropy, use_cuda,
+                    warmup_transitions, lr_alpha, target_entropy,
                     double_integration, **kwargs):
     if type(n_features) is str:
         n_features = list(map(int, n_features.split(" ")))
 
-    from mushroom_rl.utils.spaces import Box
     if double_integration:
         env_info['rl_info'].action_space = Box(*env_info["robot"]["joint_acc_limit"])
     else:
@@ -234,12 +235,12 @@ def build_agent_SAC(env_info, alg, actor_lr, critic_lr, n_features, batch_size,
                            input_shape=env_info["rl_info"].observation_space.shape,
                            output_shape=env_info["rl_info"].action_space.shape,
                            n_features=n_features,
-                           use_cuda=use_cuda)
+                           )
     actor_sigma_params = dict(network=SACActorNetwork,
                               input_shape=env_info["rl_info"].observation_space.shape,
                               output_shape=env_info["rl_info"].action_space.shape,
                               n_features=n_features,
-                              use_cuda=use_cuda)
+                              )
 
     actor_optimizer = {'class': optim.Adam,
                        'params': {'lr': actor_lr}}
@@ -251,7 +252,7 @@ def build_agent_SAC(env_info, alg, actor_lr, critic_lr, n_features, batch_size,
                          loss=F.mse_loss,
                          n_features=n_features,
                          output_shape=(1,),
-                         use_cuda=use_cuda)
+                         )
 
     alg_params = dict(initial_replay_size=initial_replay_size,
                       max_replay_size=max_replay_size,
@@ -335,36 +336,36 @@ def normalize_state(parsed_state, agent):
 
 
 def compute_metrics(core, eval_params):
-    dataset, dataset_info = core.evaluate(**eval_params, get_env_info=True)
-    parsed_dataset = parse_dataset(dataset)
+    dataset = core.evaluate(**eval_params)
+    parsed_dataset = dataset.parse(to='numpy')
 
     rl_agent = core.agent.rl_agent
 
-    J = np.mean(compute_J(dataset, core.mdp.info.gamma))
-    R = np.mean(compute_J(dataset))
+    J = np.mean(dataset.discounted_return)
+    R = np.mean(dataset.reward)
 
-    eps_length = compute_episodes_length(dataset)
+    eps_length = dataset.episodes_length
     success = 0
     current_idx = 0
     for episode_len in eps_length:
-        success += dataset_info["success"][current_idx + episode_len - 1]
+        success += dataset.info["success"][current_idx + episode_len - 1]
         current_idx += episode_len
     success /= len(eps_length)
 
-    c_avg = {key: np.zeros_like(value) for key, value in dataset_info["constraints_value"][0].items()}
-    c_max = {key: np.zeros_like(value) for key, value in dataset_info["constraints_value"][0].items()}
+    c_avg = {key: np.zeros_like(value) for key, value in dataset.info["constraints_value"][0].items()}
+    c_max = {key: np.zeros_like(value) for key, value in dataset.info["constraints_value"][0].items()}
 
-    for constraint in dataset_info["constraints_value"]:
+    for constraint in dataset.info["constraints_value"]:
         for key, value in constraint.items():
             c_avg[key] += value
             idxs = c_max[key] < value
             c_max[key][idxs] = value[idxs]
 
-    N = len(dataset_info["constraints_value"])
+    N = len(dataset.info["constraints_value"])
     for key in c_avg.keys():
         c_avg[key] /= N
 
-    normalized_state = normalize_state(parsed_dataset[0], core.agent)
+    normalized_state = normalize_state(parsed_dataset.__next__(), core.agent)
     _, log_prob_pi = rl_agent.policy.compute_action_and_log_prob(normalized_state)
     E = -log_prob_pi.mean()
 
