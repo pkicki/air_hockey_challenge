@@ -6,6 +6,7 @@ docker run -it \
     --env="DISPLAY" \
     --volume="/tmp/.X11-unix:/tmp/.X11-unix:ro" \
     --volume="$(pwd):/air_hockey_challenge" \
+    --env PYTHONPATH="/air_hockey_challenge" \
     --privileged \
     --network=host \
     --name=ahc \
