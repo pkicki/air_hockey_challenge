@@ -11,6 +11,14 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": false
+        },
+        {
+            "name": "Air Hockey Episodic Exp",
+            "type": "python",
+            "request": "launch",
+            "program": "./examples/rl/air_hockey_episodic_exp.py",
+            "console": "integratedTerminal",
+            "justMyCode": false
         }
     ]
 }
