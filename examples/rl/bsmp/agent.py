@@ -14,12 +14,24 @@ import torch
 import numpy as np
 from scipy.interpolate import interp1d
 from bsmp.bspline import BSpline
-from bsmp.bspline_approximator import BSplineApproximatorAirHockey, BSplineApproximatorAirHockeySeparatedWrapper, BSplineApproximatorAirHockeyWrapper
+from bsmp.bspline_approximator import BSplineApproximatorAirHockey, BSplineApproximatorAirHockeyWrapper
 from bsmp.utils import equality_loss, limit_loss
 
 from differentiable_robot_model.robot_model import DifferentiableKUKAiiwa, DifferentiableRobotModel
 
 
+class GaussianDiagonalDistributionVectorized(GaussianDiagonalDistribution):
+    def __init__(self, mu, std):
+        self._mu = mu
+        self._std = std
+
+        self._add_save_attr(
+            _mu='numpy',
+            _std='numpy'
+        )
+
+    def sample(self):
+        return np.stack([np.random.multivariate_normal(mu, np.diag(self._std**2)) for mu in self._mu], axis=0)
 
 
 class BSMP(Agent):
@@ -27,7 +39,7 @@ class BSMP(Agent):
     """
 
     def __init__(self, mdp_info, robot_constraints, n_q_cps, n_t_cps, n_pts_fixed_begin, n_pts_fixed_end,
-                 n_dim, sigma_init, sigma_eps, mu_lr, constraint_lr):
+                 n_dim, sigma_init, sigma_eps, mu_lr, constraint_lr, **kwargs):
         """
         Constructor.
 
@@ -55,7 +67,6 @@ class BSMP(Agent):
         self.constraint_losses_log = []
 
         self.mu_approximator = Regressor(TorchApproximator,
-                         #network=BSplineApproximatorAirHockeySeparatedWrapper,
                          network=BSplineApproximatorAirHockeyWrapper,
                          batch_size=1,
                          params={"q_bsp": self._q_bsp,
@@ -76,8 +87,7 @@ class BSMP(Agent):
         self.urdf_path = os.path.join(os.path.dirname(__file__), "iiwa_striker.urdf")
         self.load_robot()
 
-        #self._states = []
-        #self._mus = []
+
         policy = DiagonalGaussianPolicy(self.mu_approximator, self.q_log_t_cps_sigma_trainable)
 
         super().__init__(mdp_info, policy)
@@ -115,11 +125,11 @@ class BSMP(Agent):
         return q, t
 
     def _compute_trajectory(self, q_cps, t_cps, differentiable=False):
-        qN = self._q_bsp.N[0]
-        qdN = self._q_bsp.dN[0]
-        qddN = self._q_bsp.ddN[0]
-        tN = self._t_bsp.N[0]
-        tdN = self._t_bsp.dN[0]
+        qN = self._q_bsp.N
+        qdN = self._q_bsp.dN
+        qddN = self._q_bsp.ddN
+        tN = self._t_bsp.N
+        tdN = self._t_bsp.dN
         if differentiable:
             qN = torch.Tensor(qN)
             qdN = torch.Tensor(qdN)
@@ -135,9 +145,9 @@ class BSMP(Agent):
         ddtau_dtt = tdN @ t_cps
 
         # todo check if the indexing is general
-        dt = 1. / dtau_dt[..., 0] / dtau_dt.shape[0]
+        dt = 1. / dtau_dt[..., 0] / dtau_dt.shape[-2]
         t = np.cumsum(dt, axis=-1) - dt[..., :1] if not differentiable else torch.cumsum(dt, dim=-1) - dt[..., :1]
-        duration = t[-1]
+        duration = t[:, -1]
 
         q_dot = q_dot_tau * dtau_dt
         q_ddot = q_ddot_tau * dtau_dt ** 2 + ddtau_dtt * q_dot_tau * dtau_dt
@@ -171,65 +181,59 @@ class BSMP(Agent):
 
     def query_mu_approximator(self, state):
         state = state.astype(np.float32)
-        q_cps_mu, t_cps_mu = self.mu_approximator.model.network(torch.from_numpy(state[np.newaxis]).to(TorchUtils.get_device()))
+        q_cps_mu, t_cps_mu = self.mu_approximator.model.network(torch.from_numpy(state).to(TorchUtils.get_device()))
         return q_cps_mu, t_cps_mu
 
     def compute_trajectory(self, state):
         q_cps_mu, log_t_cps_mu = self.query_mu_approximator(state)
-        q_cps_mu = q_cps_mu[0].cpu()
-        log_t_cps_mu = log_t_cps_mu[0].cpu()
-        #self._states.append(state)
-        #self._mus.append(q_cps_mu.detach().numpy())
 
-        q_cps_mu_trainable = q_cps_mu[self._n_pts_fixed_begin:].reshape(-1)
+        q_cps_mu_trainable = q_cps_mu[:, self._n_pts_fixed_begin:]
         if self._n_pts_fixed_end:
-            q_cps_mu_trainable = q_cps_mu[self._n_pts_fixed_begin:-self._n_pts_fixed_end].reshape(-1)
-        log_t_cps_mu_trainable = log_t_cps_mu.reshape(-1)
-        q_log_t_cps_mu_trainable = torch.cat([q_cps_mu_trainable, log_t_cps_mu_trainable], axis=0)
-        q_log_t_cps_mu = torch.cat([q_cps_mu.reshape(-1), log_t_cps_mu.reshape(-1)], axis=0)
+            q_cps_mu_trainable = q_cps_mu[self._n_pts_fixed_begin:-self._n_pts_fixed_end]
+        q_cps_mu_trainable = q_cps_mu_trainable.reshape((-1, self._n_trainable_q_pts * self._n_dim))
 
-        q_log_t_cps_dist = GaussianDiagonalDistribution(q_log_t_cps_mu_trainable.detach().numpy(),
-                                                        np.exp(self.q_log_t_cps_sigma_trainable))
+        log_t_cps_mu_trainable = log_t_cps_mu.reshape((-1, self._n_trainable_t_pts))
+        q_log_t_cps_mu_trainable = torch.cat([q_cps_mu_trainable, log_t_cps_mu_trainable], axis=-1)
+        q_log_t_cps_mu = torch.cat([q_cps_mu.reshape((-1, self._n_q_pts * self._n_dim)),
+                                    log_t_cps_mu.reshape((-1, self._n_t_pts))], axis=-1)
+
+        q_log_t_cps_dist = GaussianDiagonalDistributionVectorized(q_log_t_cps_mu_trainable.detach().numpy(),
+                                                                  np.exp(self.q_log_t_cps_sigma_trainable))
 
         q_log_t_cps_trainable = q_log_t_cps_dist.sample()
         q_cps_trainable, t_log_cps_trainable = self._unpack_qt(q_log_t_cps_trainable, trainable=True)
 
-        q_cps = q_cps_trainable.reshape((-1, self._n_dim))
+        q_cps = q_cps_trainable.reshape((-1, self._n_trainable_q_pts , self._n_dim))
         q_cps_mu = q_cps_mu.detach().cpu().numpy()
         if self._n_pts_fixed_end:
-            q_cps = np.concatenate([q_cps_mu[:self._n_pts_fixed_begin], q_cps, q_cps_mu[-self._n_pts_fixed_end:]], axis=0)
+            q_cps = np.concatenate([q_cps_mu[:, :self._n_pts_fixed_begin], q_cps, q_cps_mu[:, -self._n_pts_fixed_end:]], axis=-2)
         else:
-            q_cps = np.concatenate([q_cps_mu[:self._n_pts_fixed_begin], q_cps], axis=0)
-        t_log_cps = t_log_cps_trainable.reshape((-1, 1))
+            q_cps = np.concatenate([q_cps_mu[:, :self._n_pts_fixed_begin], q_cps], axis=-2)
+        t_log_cps = t_log_cps_trainable.reshape((-1, self._n_t_pts, 1))
         t_cps = np.exp(t_log_cps)
-
-        # print("T_CPS:", t_cps)
-        # print("Q_CPS:", q_cps)
-        # print("SIGMA:", self.q_log_t_cps_sigma_trainable)
 
         q, q_dot, q_ddot, t, dt, duration = self._compute_trajectory(q_cps, t_cps)
 
-        action_q = interp1d(t, q, axis=0)
-        action_q_dot = interp1d(t, q_dot, axis=0)
-        action_q_ddot = interp1d(t, q_ddot, axis=0)
-        action_duration = duration
-        action = dict(q=action_q, q_dot=action_q_dot, q_ddot=action_q_ddot, duration=action_duration, dt=dt,
-                      theta=q_log_t_cps_trainable, mu_trainable=q_log_t_cps_mu_trainable, mu=q_log_t_cps_mu,
-                      distribution=q_log_t_cps_dist)
-        return action
+        action_q = [interp1d(t[i], q[i], axis=0) for i in range(state.shape[0])]
+        action_q_dot = [interp1d(t[i], q_dot[i], axis=0) for i in range(state.shape[0])]
+        action_q_ddot = [interp1d(t[i], q_ddot[i], axis=0) for i in range(state.shape[0])]
+        trajectory = [dict(q=action_q[i], q_dot=action_q_dot[i], q_ddot=action_q_ddot[i], duration=duration[i], dt=dt[i])
+                      for i in range(state.shape[0])]
+        theta = [dict(theta=q_log_t_cps_trainable[i], mu_trainable=q_log_t_cps_mu_trainable[i], mu=q_log_t_cps_mu[i])
+                 for i in range(state.shape[0])]
+        return trajectory, theta
 
-    def fit(self, dataset, theta_list, q_log_t_cps_mu_trainable_list, q_log_t_cps_mu_list, distribution_list, **info):
-        Jep = dataset.discounted_return
+    def fit(self, dataset, **info):
+        theta = np.array([theta["theta"] for theta in dataset.theta_list])
+        q_log_t_cps_mu_trainable = torch.stack([theta["mu_trainable"] for theta in dataset.theta_list])
+        q_log_t_cps_mu = torch.stack([theta["mu"] for theta in dataset.theta_list])
+        Jep = np.array(dataset.discounted_return)
 
-        Jep = np.array(Jep)
-        theta = np.array(theta_list)
-        q_log_t_cps_mu_trainable = torch.stack(q_log_t_cps_mu_trainable_list)
-        q_log_t_cps_mu = torch.stack(q_log_t_cps_mu_list)
         print(Jep.shape, theta.shape, q_log_t_cps_mu_trainable.shape, q_log_t_cps_mu.shape)
 
-        self._update(Jep, theta, distribution_list, q_log_t_cps_mu, q_log_t_cps_mu_trainable)
+        self._update(Jep, theta, q_log_t_cps_mu, q_log_t_cps_mu_trainable)
 
-    def _update(self, Jep, theta, distributions, mu, mu_trainable):
+    def _update(self, Jep, theta, mu, mu_trainable):
         baseline_num_list = list()
         baseline_den_list = list()
         diff_log_dist_list = list()
@@ -238,7 +242,7 @@ class BSMP(Agent):
         for i in range(len(Jep)):
             J_i = Jep[i]
             theta_i = theta[i]
-            distribution_i = distributions[i]
+            distribution_i = GaussianDiagonalDistribution(mu_trainable[i].detach().numpy(), np.exp(self.q_log_t_cps_sigma_trainable))
 
             diff_log_dist = distribution_i.diff_log(theta_i)
             diff_log_dist2 = diff_log_dist ** 2

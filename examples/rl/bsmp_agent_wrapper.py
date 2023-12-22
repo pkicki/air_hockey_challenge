@@ -56,10 +56,11 @@ class BSMPAgent(AgentBase):
             env_info='pickle'
         )
 
-    def draw_action(self, state):
+    def draw_action(self, state, policy_state=None):
         """
         Args:
             state (ndarray): state of the system
+            policy_state (ndarray, None): the policy internal state.
 
         Returns:
             numpy.ndarray, (3, num_joints): The desired [Positions, Velocities, Acceleration] of the
@@ -67,46 +68,30 @@ class BSMPAgent(AgentBase):
             The third array is used for the training of the SAC as the output is acceleration. This
             action tuple will be saved in the dataset buffer
         """
-        #print("Iteration: ", self._iteration)
-        if self._iteration == 0:
-            print("Trajectory computation: ", self._planner_calls)
-            trajectory = self.bsmp_agent.compute_trajectory(state)
-            self.q = trajectory["q"]
-            self.q_dot = trajectory["q_dot"]
-            self.q_ddot = trajectory["q_ddot"]
-            self.duration = trajectory["duration"]
-            self.theta_list.append(trajectory["theta"])
-            self.q_log_t_cps_mu_trainable_list.append(trajectory['mu_trainable'])
-            self.q_log_t_cps_mu_list.append(trajectory['mu'])
-            self.distribution_list.append(trajectory['distribution'])
-            self._planner_calls += 1
-        
-        time = min(self._iteration * self._dt, self.duration)
-        pos = self.q(time)
-        vel = self.q_dot(time)
-        acc = self.q_ddot(time)
-        self._iteration += 1
-        #return np.hstack([pos, vel])
-        #return np.vstack([pos, vel])
-        return np.vstack([pos, vel, acc])
+        q = []
+        q_dot = []
+        q_ddot = []
+        for ps in policy_state:
+            t = min(ps["iteration"] * self._dt, ps["duration"])
+            q.append(ps["q"](t))
+            q_dot.append(ps["q_dot"](t))
+            q_ddot.append(ps["q_ddot"](t))
+            ps["iteration"] += 1
+        action = np.stack([np.array(x) for x in [q, q_dot, q_ddot]], axis=-2) 
+        return action, policy_state
 
-    def reset(self):
-        self._iteration = 0
-        self.q = None
-        self.q_dot = None
-        self.q_ddot = None
+    def episode_start(self, initial_state, episode_info):
+        # TODO: implement the trajectory generation for single environment
+        return super().episode_start(initial_state, episode_info)
 
-    def reset_dataset(self):
-        self.theta_list = []
-        self.q_log_t_cps_mu_trainable_list = []
-        self.q_log_t_cps_mu_list = []
-        self.distribution_list = []
-        
+    def episode_start_vectorized(self, initial_states, episode_info, start_mask):
+        policy_states, theta = self.bsmp_agent.compute_trajectory(initial_states)
+        for p in policy_states:
+            p['iteration'] = 0
+        return policy_states, theta
 
     def fit(self, dataset, **info):
-        self.bsmp_agent.fit(dataset, self.theta_list, self.q_log_t_cps_mu_trainable_list,
-                            self.q_log_t_cps_mu_list, self.distribution_list, **info)
-        self.reset_dataset()
+        self.bsmp_agent.fit(dataset, **info)
 
     def update_alphas(self):
         self.bsmp_agent.update_alphas()

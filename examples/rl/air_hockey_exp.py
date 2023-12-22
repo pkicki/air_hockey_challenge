@@ -1,4 +1,5 @@
 import os, sys
+from time import perf_counter
 
 import numpy as np
 import torch.nn.functional as F
@@ -12,6 +13,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', ))
 
 from air_hockey_challenge.framework.air_hockey_challenge_wrapper import AirHockeyChallengeWrapper
 from air_hockey_challenge.framework.challenge_core import ChallengeCore
+from air_hockey_challenge.framework.challenge_core_vectorized import ChallengeCoreVectorized
 from atacom_agent_wrapper import ATACOMAgent, build_ATACOM_Controller
 from network import SACActorNetwork, SACCriticNetwork
 from rewards import HitReward, DefendReward, PrepareReward
@@ -19,7 +21,7 @@ from rl_agent_wrapper import RlAgent
 from bsmp_agent_wrapper import BSMPAgent
 from bsmp.agent import BSMP
 from mushroom_rl.algorithms.actor_critic import SAC
-from mushroom_rl.core import Logger, Agent
+from mushroom_rl.core import Logger, Agent, MultiprocessEnvironment
 from mushroom_rl.rl_utils.spaces import Box
 from mushroom_rl.utils.frames import LazyFrames
 from mushroom_rl.rl_utils.preprocessors import MinMaxPreprocessor
@@ -33,20 +35,14 @@ torch.Tensor.__repr__ = custom_repr
 
 @single_experiment
 def experiment(env: str = '7dof-hit',
-               n_epochs: int = 100000,
-               alg: str = "bsmp",
-               #alg: str = "atacom-sac",
-               #n_steps: int = 50000,
-               #n_epochs: int = 100,
-               #n_steps: int = 50,
-               #n_steps_per_fit: int = 5,
-               n_steps: int = None,
-               n_steps_per_fit: int = None,
-               n_episodes: int = 1,
-               n_episodes_per_fit: int = 1,
+               alg: str = "atacom-sac",
+               n_envs: int = 1,
+               n_steps: int = 50000,
+               n_epochs: int = 100,
                quiet: bool = True,
-               render: bool = True,
-               n_eval_episodes: int = 3,
+               n_steps_per_fit: int = 1,
+               render: bool = False,
+               n_eval_episodes: int = 10,
 
                actor_lr: float = 1e-4,
                critic_lr: float = 3e-4,
@@ -92,24 +88,22 @@ def experiment(env: str = '7dof-hit',
 
     kwargs['interpolation_order'] = interpolation_order
     kwargs['debug'] = True
-    kwargs["moving_init"] = False
-    kwargs["horizon"] = 250
-    env = env_builder(env, kwargs)
+    env, env_info_ = env_builder(env, n_envs, kwargs)
 
-    agent = agent_builder(env.env_info, locals())
-    core = ChallengeCore(agent, env, action_idx=[0, 1])
+    # TODO: calling locals() is a bad idea beacuse some local variable names may overlap
+    # with positional arguments of functions called by the agent_builder
+    agent = agent_builder(env_info_, locals())
+
+    if n_envs > 1:
+        core = ChallengeCoreVectorized(agent, env, action_idx=[0, 1])
+    else:
+        core = ChallengeCore(agent, env, action_idx=[0, 1])
 
     best_success = -np.inf
 
     for epoch in range(n_epochs):
-        if hasattr(agent, "reset_dataset"):
-            agent.reset_dataset()
-        print("Epoch: ", epoch)
-        core.learn(n_steps=n_steps, n_steps_per_fit=n_steps_per_fit,
-                   n_episodes=n_episodes, n_episodes_per_fit=n_episodes_per_fit, quiet=quiet)
+        core.learn(n_steps=n_steps, n_steps_per_fit=n_steps_per_fit, quiet=quiet)
 
-        if hasattr(agent, "update_alphas"):
-            agent.update_alphas()
         # Evaluate
         J, R, success, c_avg, c_max, E, V, alpha = compute_metrics(core, eval_params)
 
@@ -157,7 +151,7 @@ def experiment(env: str = '7dof-hit',
     wandb_run.finish()
 
 
-def env_builder(env, kwargs):
+def env_builder(env_name, n_envs, kwargs):
     settings = {}
     keys = ["gamma", "horizon", "debug", "interpolation_order", "moving_init"]
 
@@ -167,16 +161,19 @@ def env_builder(env, kwargs):
             del kwargs[key]
 
     # Specify the customize reward function
-    if "hit" in env:
+    if "hit" in env_name:
         settings["custom_reward_function"] = HitReward()
 
-    if "defend" in env:
+    if "defend" in env_name:
         settings["custom_reward_function"] = DefendReward()
 
-    if "prepare" in env:
+    if "prepare" in env_name:
         settings["custom_reward_function"] = PrepareReward()
 
-    return AirHockeyChallengeWrapper(env, **settings)
+    env = AirHockeyChallengeWrapper(env_name, **settings)
+    if n_envs > 1:
+        return MultiprocessEnvironment(AirHockeyChallengeWrapper, env_name, n_envs=n_envs, **settings), env.env_info
+    return env, env.env_info
 
 
 def agent_builder(env_info, kwargs):
@@ -206,10 +203,6 @@ def agent_builder(env_info, kwargs):
         sac_agent = build_agent_SAC(env_info, **kwargs)
         atacom = build_ATACOM_Controller(env_info, **kwargs)
         return ATACOMAgent(env_info, kwargs["double_integration"], sac_agent, atacom)
-
-    if alg == "bsmp":
-        bsmp_agent = build_agent_BSMP(env_info, **kwargs)
-        return BSMPAgent(env_info, bsmp_agent)
 
 
 def build_agent_SAC(env_info, alg, actor_lr, critic_lr, n_features, batch_size,
@@ -269,41 +262,6 @@ def build_agent_SAC(env_info, alg, actor_lr, critic_lr, n_features, batch_size,
 
     prepro = MinMaxPreprocessor(env_info["rl_info"])
     agent.add_preprocessor(prepro)
-    return agent
-
-
-def build_agent_BSMP(env_info, alg, actor_lr, critic_lr, n_features, batch_size,
-                    **kwargs):
-    if type(n_features) is str:
-        n_features = list(map(int, n_features.split(" ")))
-
-    # TODO: add parameter regarding the constraint loss stuff
-    alg_params = dict(
-        n_q_cps=11,
-        n_t_cps=20,
-        n_dim=7,
-        n_pts_fixed_begin=2,
-        n_pts_fixed_end=0,
-        sigma_init=0.1,
-        constraint_lr=1e-2,
-        mu_lr=5e-5,
-        sigma_eps=1e-2,
-    )
-
-    # TODO: rename the learning rate attributes
-    table_constraints = env_info["constraints"].get("ee_constr")
-    robot_constraints = dict(
-        q = env_info["robot"]["joint_pos_limit"][-1],
-        q_dot = env_info["robot"]["joint_vel_limit"][-1],
-        q_ddot = env_info["robot"]["joint_acc_limit"][-1],
-        z_ee = (table_constraints.z_lb + table_constraints.z_ub) / 2.,
-        x_ee_lb = table_constraints.x_lb,
-        y_ee_lb = table_constraints.y_lb,
-        y_ee_ub = table_constraints.y_ub,
-    )
-
-
-    agent = BSMP(env_info['rl_info'], robot_constraints, **alg_params)
     return agent
 
 
