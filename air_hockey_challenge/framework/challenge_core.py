@@ -54,6 +54,7 @@ class ChallengeCore(Core):
             of the reached state and the last step flag.
 
         """
+        # TODO: Adjust the tournament part of the challenge core to align with policy_states
         if self.is_tournament:
             action_1, action_2, time_1, time_2 = self.agent.draw_action(self._state)
 
@@ -75,17 +76,13 @@ class ChallengeCore(Core):
 
         else:
             start_time = time.time()
-            action = self.agent.draw_action(self._state)
+            action, policy_next_state = self.agent.draw_action(self._state, self._policy_state)
             end_time = time.time()
             duration = (end_time - start_time)
-            #print("AGENT STEP TIME: ", duration)
 
             # If there is an index error here either the action shape does not match the interpolation type or
             # the custom action_idx is wrong
-            #t0 = time.perf_counter()
             next_state, reward, absorbing, step_info = self.env.step(action[self.action_idx])
-            #t1 = time.perf_counter()
-            #print("ENV STEP TIME: ", t1 - t0)
 
         step_info["computation_time"] = duration
         self._episode_steps += 1
@@ -100,16 +97,18 @@ class ChallengeCore(Core):
                 self._episode_steps < self.env.info.horizon and not absorbing)
 
         state = self._state
+        policy_state = self._policy_state
         next_state = self._preprocess(next_state.copy())
         self._state = next_state
+        self._policy_state = policy_next_state
 
         # Hotfix for the action storage in the dataset for not tournament environment
         # Definitely will not work for the tournament environment
         # TODO: Fix this by adding a different type of the dataset or by proper reshaping of the action
         # and reporting flattened shapes while creating enviornment
-        action = np.reshape(action[:2], (-1,))
+        action = np.reshape(action[self.action_idx], (-1,))
 
-        return (state, action, reward, next_state, absorbing, last), step_info
+        return (state, action, reward, next_state, absorbing, last, policy_state, policy_next_state), step_info
 
     def reset(self, initial_states=None):
         super().reset(initial_states)

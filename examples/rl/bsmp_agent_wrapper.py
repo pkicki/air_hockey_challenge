@@ -68,6 +68,12 @@ class BSMPAgent(AgentBase):
             The third array is used for the training of the SAC as the output is acceleration. This
             action tuple will be saved in the dataset buffer
         """
+        assert policy_state is not None
+
+        single_env = False
+        if not isinstance(policy_state, list):
+            single_env = True
+            policy_state = [policy_state]
         q = []
         q_dot = []
         q_ddot = []
@@ -78,11 +84,17 @@ class BSMPAgent(AgentBase):
             q_ddot.append(ps["q_ddot"](t))
             ps["iteration"] += 1
         action = np.stack([np.array(x) for x in [q, q_dot, q_ddot]], axis=-2) 
+
+        if single_env:
+            action = action[0]
+            policy_state = policy_state[0]
+
         return action, policy_state
 
     def episode_start(self, initial_state, episode_info):
-        # TODO: implement the trajectory generation for single environment
-        return super().episode_start(initial_state, episode_info)
+        policy_states, theta = self.bsmp_agent.compute_trajectory(initial_state[None])
+        policy_states[0]['iteration'] = 0
+        return policy_states[0], theta[0]
 
     def episode_start_vectorized(self, initial_states, episode_info, start_mask):
         policy_states, theta = self.bsmp_agent.compute_trajectory(initial_states)

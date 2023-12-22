@@ -54,7 +54,7 @@ class ChallengeCoreVectorized(VectorCore):
             of the reached state and the last step flag.
 
         """
-        # TODO: Adjust the tournament part of the challenge core to align with the vectorized core
+        # TODO: Adjust the tournament part of the challenge core to align with the vectorized core and policy_states
         if self.is_tournament:
             action_1, action_2, time_1, time_2 = self.agent.draw_action(self._state)
 
@@ -79,7 +79,6 @@ class ChallengeCoreVectorized(VectorCore):
             action, policy_next_state = self.agent.draw_action(self._state, self._policy_state)
             end_time = time.time()
             duration = (end_time - start_time)
-            #print("AGENT STEP TIME: ", duration)
 
             # If there is an index error here either the action shape does not match the interpolation type or
             # the custom action_idx is wrong
