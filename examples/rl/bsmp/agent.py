@@ -150,8 +150,9 @@ class BSMP(Agent):
         dtau_dt = tN @ t_cps
         ddtau_dtt = tdN @ t_cps
 
-        # todo check if the indexing is general
-        dt = 1. / dtau_dt[..., 0] / dtau_dt.shape[-2]
+        # ensure that dt is non-negative
+        dt = 1. / np.abs(dtau_dt[..., 0]) / dtau_dt.shape[-2] if not differentiable else 1. / torch.abs(dtau_dt[..., 0]) / dtau_dt.shape[-2]
+        #dt = 1. / dtau_dt[..., 0] / dtau_dt.shape[-2]
         t = np.cumsum(dt, axis=-1) - dt[..., :1] if not differentiable else torch.cumsum(dt, dim=-1) - dt[..., :1]
         duration = t[:, -1]
 
@@ -172,7 +173,8 @@ class BSMP(Agent):
         q_cps_mu = q_cps_mu[0].cpu().detach().numpy()
         log_t_cps_mu = log_t_cps_mu[0, ..., None].cpu().detach().numpy()
         q_cps = q_cps_mu
-        t_cps = np.exp(log_t_cps_mu)
+        #t_cps = np.exp(log_t_cps_mu)
+        t_cps = log_t_cps_mu # assume that time control points can be negative
         return self._compute_trajectory(q_cps, t_cps)
 
     def query_mu_approximator(self, state):
@@ -206,7 +208,8 @@ class BSMP(Agent):
         else:
             q_cps = np.concatenate([q_cps_mu[:, :self._n_pts_fixed_begin], q_cps], axis=-2)
         t_log_cps = t_log_cps_trainable.reshape((-1, self._n_t_pts, 1))
-        t_cps = np.exp(t_log_cps)
+        #t_cps = np.exp(t_log_cps)
+        t_cps = t_log_cps # assume that time control points can be negative
 
         q, q_dot, q_ddot, t, dt, duration = self._compute_trajectory(q_cps, t_cps)
 
@@ -261,7 +264,8 @@ class BSMP(Agent):
             q_cps, t_log_cps = self._unpack_qt(x)
             q_cps = q_cps.reshape((x.shape[0], self._n_q_pts, self._n_dim))
             t_log_cps = t_log_cps.reshape((x.shape[0], self._n_t_pts, 1))
-            t_cps = torch.exp(t_log_cps)
+            #t_cps = torch.exp(t_log_cps)
+            t_cps = t_log_cps
             q, q_dot, q_ddot, t, dt, duration = self._compute_trajectory(q_cps, t_cps, differentiable=True)
 
             dt_ = dt[..., None]
@@ -304,6 +308,8 @@ class BSMP(Agent):
         mean_loss = torch.mean(loss)
         self.mu_optimizer.zero_grad()
         mean_loss.backward()
+        for name, param in self.mu_approximator.model.network.named_parameters():
+            print(name, torch.isnan(param.grad))
         self.mu_optimizer.step()
 
         # PGPE update of the sigmas

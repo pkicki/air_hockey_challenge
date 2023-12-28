@@ -35,7 +35,7 @@ torch.Tensor.__repr__ = custom_repr
 
 @single_experiment
 def experiment(env: str = '7dof-hit',
-               n_envs: int = 2,
+               n_envs: int = 1,
                alg: str = "bsmp",
                n_epochs: int = 100000,
                n_steps: int = None,
@@ -80,7 +80,7 @@ def experiment(env: str = '7dof-hit',
         debug=debug,
         interpolation_order=interpolation_order,
         moving_init=False,
-        horizon=250,
+        horizon=100,
         gamma=1.,
     )
 
@@ -152,7 +152,7 @@ def experiment(env: str = '7dof-hit',
             }, step=epoch)
         if best_success <= success:
             best_success = success
-            #logger.log_agent(agent)
+            logger.log_agent(agent)
 
     agent = Agent.load(os.path.join(logger.path, f"agent-{seed}.msh"))
 

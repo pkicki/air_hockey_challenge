@@ -104,14 +104,33 @@ class BSplineFastApproximatorNDoF(BSplineApproximator):
         q_dot = torch.tensor(self.q_bsp.dN, dtype=torch.float32) @ q_cps
         q_ddot = torch.tensor(self.q_bsp.ddN, dtype=torch.float32) @ q_cps
 
-        ds_dt_vel = 1. / torch.max(torch.abs(q_dot / self.q_dot_limit), dim=-1)[0]
-        ds_dt_acc = (1. / torch.max(torch.abs(q_ddot / self.q_ddot_limit), dim=-1)[0])**(1./2)
+        ds_dt_vel = 1. / (torch.max(torch.abs(q_dot / self.q_dot_limit), dim=-1)[0] + 1e-5)
+        ds_dt_acc = (1. / (torch.max(torch.abs(q_ddot / self.q_ddot_limit), dim=-1)[0])**(1./2) + 1e-5)
         ds_dt_base = torch.minimum(ds_dt_vel, ds_dt_acc)
+
+        #from torchaudio.functional import lowpass_biquad
+
+        #a = torch.rand((1000,)) - 0.5
+        #b = lowpass_biquad(a, ds_dt_base.shape[-1], 100.) 
+        #c = lowpass_biquad(a, ds_dt_base.shape[-1], 10.) 
+        #d = lowpass_biquad(a, ds_dt_base.shape[-1], 1.) 
+
+        #import matplotlib.pyplot as plt
+        #plt.plot(a.detach().numpy())
+        #plt.plot(b.detach().numpy())   
+        #plt.plot(c.detach().numpy())   
+        #plt.plot(d.detach().numpy())   
+        #plt.legend(["a", "b", "c", "d"])
+        #plt.show()
+
+        #scale = torch.max(ds_dt_base)
+        #ds_dt_base_ = lowpass_biquad(ds_dt_base / scale, ds_dt_base.shape[-1], 1.) * scale
+        #ds_dt_base_ = lowpass_biquad(ds_dt_base / scale, 100, 1.) * scale
 
         Nt = torch.tensor(self.t_bsp.N[..., self.n_pts_fixed_begin:self.t_bsp.N.shape[-1]-self.n_pts_fixed_end], dtype=torch.float32)
         ds_dt_cps_base = (torch.linalg.pinv(Nt) @ ds_dt_base[..., None])[..., 0]
+        #ds_dt_cps_base = torch.maximum(ds_dt_cps_base, torch.ones_like(ds_dt_cps_base) * 1e-3)
 
-        #import matplotlib.pyplot as plt
         #ds_dt_ = (Nt @ ds_dt_cps_base[..., None])[..., 0]
         #plt.subplot(231)
         #plt.plot(q_dot[0].detach().numpy())
@@ -119,6 +138,7 @@ class BSplineFastApproximatorNDoF(BSplineApproximator):
         #plt.plot(q_ddot[0].detach().numpy())
         #plt.subplot(233)
         #plt.plot(ds_dt_base[0].detach().numpy())
+        #plt.plot(ds_dt_base_[0].detach().numpy(), 'tab:green')
         #plt.plot(ds_dt_[0].detach().numpy(), 'r--')
         #plt.subplot(234)
         #plt.plot(ds_dt_cps_base[0].detach().numpy())
@@ -131,7 +151,7 @@ class BSplineFastApproximatorNDoF(BSplineApproximator):
         if self.n_pts_fixed_end > 0:
             ds_dt_cps = torch.cat([ds_dt_cps, ds_dt_prototype[:, ds_dt_prototype.shape[1] - self.n_pts_fixed_end:]], axis=-1)
 
-        log_ds_dt_cps = torch.log(ds_dt_cps)
+        #log_ds_dt_cps = torch.log(ds_dt_cps)
         #t1 = perf_counter()
         #print("Time: ", t1 - t0)
         #assert False
@@ -175,7 +195,9 @@ class BSplineFastApproximatorNDoF(BSplineApproximator):
         #    plt.plot(t_, q_ddot[0, :, i].detach().numpy())
         #plt.show()
     
-        return q_cps, log_ds_dt_cps
+        #return q_cps, log_ds_dt_cps
+        #return q_cps, ds_dt_prototype
+        return q_cps, ds_dt_cps
 
 
 class BSplineFastApproximatorAirHockey(BSplineFastApproximatorNDoF):
