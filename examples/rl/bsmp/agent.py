@@ -20,6 +20,7 @@ from bsmp.utils import equality_loss, limit_loss
 from differentiable_robot_model.robot_model import DifferentiableKUKAiiwa, DifferentiableRobotModel
 
 from examples.rl.bsmp.bsmp_policy import BSMPPolicy
+from examples.rl.bsmp.bspline_timeoptimal_approximator import BSplineFastApproximatorAirHockeyWrapper
 
 
 class GaussianDiagonalDistributionVectorized(GaussianDiagonalDistribution):
@@ -69,7 +70,8 @@ class BSMP(Agent):
         self.constraint_losses_log = []
 
         self.mu_approximator = Regressor(TorchApproximator,
-                         network=BSplineApproximatorAirHockeyWrapper,
+                         #network=BSplineApproximatorAirHockeyWrapper,
+                         network=BSplineFastApproximatorAirHockeyWrapper,
                          batch_size=1,
                          params={"q_bsp": self._q_bsp,
                                  "t_bsp": self._t_bsp,
@@ -77,6 +79,8 @@ class BSMP(Agent):
                                  "n_pts_fixed_begin": self._n_pts_fixed_begin,
                                  "n_pts_fixed_end": self._n_pts_fixed_end,
                                  "input_space": mdp_info.observation_space,
+                                 "q_dot_limit": robot_constraints["q_dot"],
+                                 "q_ddot_limit": robot_constraints["q_ddot"],
                                  },
                          input_shape=(mdp_info.observation_space.shape[0],),
                          output_shape=(self._n_trainable_pts,))
