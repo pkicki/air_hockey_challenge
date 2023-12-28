@@ -308,8 +308,6 @@ class BSMP(Agent):
         mean_loss = torch.mean(loss)
         self.mu_optimizer.zero_grad()
         mean_loss.backward()
-        for name, param in self.mu_approximator.model.network.named_parameters():
-            print(name, torch.isnan(param.grad))
         self.mu_optimizer.step()
 
         # PGPE update of the sigmas
