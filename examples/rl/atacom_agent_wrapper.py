@@ -16,7 +16,7 @@ class ATACOMAgent(AgentBase):
         self.env_info = env_info
         self.rl_agent = rl_agent
         self.atacom_controller = atacom_controller
-        super().__init__(env_info, Policy())
+        super().__init__(env_info)
 
         self._double_integration = double_integration
         self._k_pos = 5

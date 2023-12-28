@@ -19,6 +19,8 @@ from bsmp.utils import equality_loss, limit_loss
 
 from differentiable_robot_model.robot_model import DifferentiableKUKAiiwa, DifferentiableRobotModel
 
+from examples.rl.bsmp.bsmp_policy import BSMPPolicy
+
 
 class GaussianDiagonalDistributionVectorized(GaussianDiagonalDistribution):
     def __init__(self, mu, std):
@@ -38,7 +40,7 @@ class BSMP(Agent):
     """
     """
 
-    def __init__(self, mdp_info, robot_constraints, n_q_cps, n_t_cps, n_pts_fixed_begin, n_pts_fixed_end,
+    def __init__(self, mdp_info, robot_constraints, dt, n_q_cps, n_t_cps, n_pts_fixed_begin, n_pts_fixed_end,
                  n_dim, sigma_init, sigma_eps, mu_lr, constraint_lr, **kwargs):
         """
         Constructor.
@@ -88,7 +90,7 @@ class BSMP(Agent):
         self.load_robot()
 
 
-        policy = DiagonalGaussianPolicy(self.mu_approximator, self.q_log_t_cps_sigma_trainable)
+        policy = BSMPPolicy(dt=dt)
 
         super().__init__(mdp_info, policy)
 
@@ -168,16 +170,6 @@ class BSMP(Agent):
         q_cps = q_cps_mu
         t_cps = np.exp(log_t_cps_mu)
         return self._compute_trajectory(q_cps, t_cps)
-
-    def compute_full_std(self):
-        qt_cps_sigma = np.exp(self.q_log_t_cps_sigma_trainable)
-        q_cps_sigma = qt_cps_sigma[:self._n_trainable_q_pts * self._n_dim]
-        t_cps_sigma = qt_cps_sigma[self._n_trainable_q_pts * self._n_dim:]
-        q_cps_sigma = np.concatenate([0. * np.ones((self._n_pts_fixed_begin * self._n_dim,)),
-                                      q_cps_sigma,
-                                      0. * np.ones((self._n_pts_fixed_end * self._n_dim,))], axis=0)
-        cps_sigma = np.concatenate([q_cps_sigma, t_cps_sigma], axis=-1)
-        return cps_sigma
 
     def query_mu_approximator(self, state):
         state = state.astype(np.float32)

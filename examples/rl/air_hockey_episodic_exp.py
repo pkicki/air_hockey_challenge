@@ -221,7 +221,7 @@ def build_agent_BSMP(env_info, **agent_params):
     )
 
 
-    agent = BSMP(env_info['rl_info'], robot_constraints, **agent_params)
+    agent = BSMP(env_info['rl_info'], robot_constraints, env_info["dt"], **agent_params)
     return agent
 
 
