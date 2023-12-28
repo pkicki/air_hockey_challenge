@@ -147,12 +147,14 @@ class BSMP(Agent):
         q_dot_tau = qdN @ q_cps
         q_ddot_tau = qddN @ q_cps
 
-        dtau_dt = tN @ t_cps
-        ddtau_dtt = tdN @ t_cps
+        #dtau_dt = tN @ t_cps
+        #ddtau_dtt = tdN @ t_cps
+        dtau_dt = torch.exp(tN @ t_cps) if differentiable else np.exp(tN @ t_cps)
+        ddtau_dtt = dtau_dt * (tdN @ t_cps)
 
         # ensure that dt is non-negative
-        dt = 1. / np.abs(dtau_dt[..., 0]) / dtau_dt.shape[-2] if not differentiable else 1. / torch.abs(dtau_dt[..., 0]) / dtau_dt.shape[-2]
-        #dt = 1. / dtau_dt[..., 0] / dtau_dt.shape[-2]
+        #dt = 1. / np.abs(dtau_dt[..., 0]) / dtau_dt.shape[-2] if not differentiable else 1. / torch.abs(dtau_dt[..., 0]) / dtau_dt.shape[-2]
+        dt = 1. / dtau_dt[..., 0] / dtau_dt.shape[-2]
         t = np.cumsum(dt, axis=-1) - dt[..., :1] if not differentiable else torch.cumsum(dt, dim=-1) - dt[..., :1]
         duration = t[:, -1]
 
