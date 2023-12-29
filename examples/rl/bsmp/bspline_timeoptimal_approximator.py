@@ -47,15 +47,30 @@ class BSplineFastApproximatorNDoF(BSplineApproximator):
         x = self.normalize_input(x)
         return x, q0, qd, dq0, dqd, ddq0, ddqd
 
+    def compute_boundary_control_points_exp(self, dtau_dt, q0, q_dot_0, q_ddot_0, qd, q_dot_d, q_ddot_d):
+        q1 = q_dot_0 / (torch.exp(dtau_dt[:, :1]) * self.qd1) + q0
+        qm1 = qd - q_dot_d / (torch.exp(dtau_dt[:, -1:]) * self.qd1)
+        q2 = (q_ddot_0 / torch.exp(dtau_dt[:, :1])**2
+              - self.qd1 * self.td1 * (q1 - q0) * (dtau_dt[:, 1] - dtau_dt[:, 0])[:, None]
+              - self.qdd1 * q0
+              - self.qdd2 * q1) / self.qdd3
+        qm2 = (q_ddot_d / torch.exp(dtau_dt[:, -1:])**2
+               - self.qd1 * self.td1 * (qd - qm1) * (dtau_dt[:, -1] - dtau_dt[:, -2])[:, None]
+               - self.qdd1 * qd
+               - self.qdd2 * qm1) / self.qdd3
+        return q1, q2, qm2, qm1
+
+
     def __call__(self, x):
         x, q0, qd, dq0, dqd, ddq0, ddqd = self.prepare_data(x)
 
         x = self.fc(x)
         q_est = self.q_est(x)
         q = torch.pi * torch.reshape(q_est, (-1, self.n_q_bsp_control_points, self.n_dim))
-        log_ds_dt_prototype = self.t_est(x)
-        ds_dt_prototype = torch.exp(log_ds_dt_prototype)
-        ds_dt_mul = ds_dt_prototype[:, self.n_pts_fixed_begin:self.n_t_bsp_control_points-self.n_pts_fixed_end]
+        ds_dt_prototype = self.t_est(x)
+        n_ds_dt_fixed_begin = max(self.n_pts_fixed_begin - 1, 0)
+        n_ds_dt_fixed_end = self.n_t_bsp_control_points - max(self.n_pts_fixed_end - 1, 0)
+        ds_dt_mul = ds_dt_prototype[:, n_ds_dt_fixed_begin:n_ds_dt_fixed_end]
 
         #if self.n_pts_fixed_end == 0:
         #    delta_q = torch.abs(q[:, -1])
@@ -67,7 +82,8 @@ class BSplineFastApproximatorNDoF(BSplineApproximator):
         #average_ds_dt = 1. / estimated_trajectory_duration 
         #fake_ds_dt = (average_ds_dt[:, None]).repeat((1, 2))
         # TODO: think if the ds_dt_prototype should be somehowe ferreferd to the delta_q
-        q1, q2, qm2, qm1 = self.compute_boundary_control_points(ds_dt_prototype, q0, dq0, ddq0, qd, dqd, ddqd)
+        q1, q2, qm2, qm1 = self.compute_boundary_control_points_exp(ds_dt_prototype, q0, dq0, ddq0, qd, dqd, ddqd)
+        #q1, q2, qm2, qm1 = self.compute_boundary_control_points(ds_dt_prototype, q0, dq0, ddq0, qd, dqd, ddqd)
 
         s = torch.linspace(0., 1., q.shape[1] + 2)[None, 1:-1, None].to(q.device)
 
@@ -105,7 +121,7 @@ class BSplineFastApproximatorNDoF(BSplineApproximator):
         q_ddot = torch.tensor(self.q_bsp.ddN, dtype=torch.float32) @ q_cps
 
         ds_dt_vel = 1. / (torch.max(torch.abs(q_dot / self.q_dot_limit), dim=-1)[0] + 1e-5)
-        ds_dt_acc = (1. / (torch.max(torch.abs(q_ddot / self.q_ddot_limit), dim=-1)[0])**(1./2) + 1e-5)
+        ds_dt_acc = (1. / (torch.max(torch.abs(q_ddot / self.q_ddot_limit), dim=-1)[0] + 1e-10)**(1./2))
         ds_dt_base = torch.minimum(ds_dt_vel, ds_dt_acc)
 
         #from torchaudio.functional import lowpass_biquad
@@ -127,8 +143,8 @@ class BSplineFastApproximatorNDoF(BSplineApproximator):
         #ds_dt_base_ = lowpass_biquad(ds_dt_base / scale, ds_dt_base.shape[-1], 1.) * scale
         #ds_dt_base_ = lowpass_biquad(ds_dt_base / scale, 100, 1.) * scale
 
-        Nt = torch.tensor(self.t_bsp.N[..., self.n_pts_fixed_begin:self.t_bsp.N.shape[-1]-self.n_pts_fixed_end], dtype=torch.float32)
-        ds_dt_cps_base = (torch.linalg.pinv(Nt) @ ds_dt_base[..., None])[..., 0]
+        Nt = torch.tensor(self.t_bsp.N[..., n_ds_dt_fixed_begin:n_ds_dt_fixed_end], dtype=torch.float32)
+        ds_dt_cps_base = (torch.linalg.pinv(Nt) @ torch.log(ds_dt_base[..., None]))[..., 0]
         #ds_dt_cps_base = torch.maximum(ds_dt_cps_base, torch.ones_like(ds_dt_cps_base) * 1e-3)
 
         #ds_dt_ = (Nt @ ds_dt_cps_base[..., None])[..., 0]
@@ -144,12 +160,12 @@ class BSplineFastApproximatorNDoF(BSplineApproximator):
         #plt.plot(ds_dt_cps_base[0].detach().numpy())
         #plt.show()
 
-        ds_dt_cps = ds_dt_cps_base * ds_dt_mul
+        ds_dt_cps = ds_dt_cps_base * (ds_dt_mul + 1.)
         
-        if self.n_pts_fixed_begin > 0:
-            ds_dt_cps = torch.cat([ds_dt_prototype[:, :self.n_pts_fixed_begin], ds_dt_cps], axis=-1)
-        if self.n_pts_fixed_end > 0:
-            ds_dt_cps = torch.cat([ds_dt_cps, ds_dt_prototype[:, ds_dt_prototype.shape[1] - self.n_pts_fixed_end:]], axis=-1)
+        if n_ds_dt_fixed_begin > 0:
+            ds_dt_cps = torch.cat([ds_dt_prototype[:, :n_ds_dt_fixed_begin], ds_dt_cps], axis=-1)
+        if n_ds_dt_fixed_end < ds_dt_prototype.shape[1]:
+            ds_dt_cps = torch.cat([ds_dt_cps, ds_dt_prototype[:, n_ds_dt_fixed_end:]], axis=-1)
 
         #log_ds_dt_cps = torch.log(ds_dt_cps)
         #t1 = perf_counter()
