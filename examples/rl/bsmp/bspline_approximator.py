@@ -34,6 +34,19 @@ class BSplineApproximator(torch.nn.Module):
                - self.qdd1 * qd - self.qdd2 * qm1) / self.qdd3
         return q1, q2, qm2, qm1
 
+    def compute_boundary_control_points_exp(self, dtau_dt, q0, q_dot_0, q_ddot_0, qd, q_dot_d, q_ddot_d):
+        q1 = q_dot_0 / (torch.exp(dtau_dt[:, :1]) * self.qd1) + q0
+        qm1 = qd - q_dot_d / (torch.exp(dtau_dt[:, -1:]) * self.qd1)
+        q2 = (q_ddot_0 / torch.exp(dtau_dt[:, :1])**2
+              - self.qd1 * self.td1 * (q1 - q0) * (dtau_dt[:, 1] - dtau_dt[:, 0])[:, None]
+              - self.qdd1 * q0
+              - self.qdd2 * q1) / self.qdd3
+        qm2 = (q_ddot_d / torch.exp(dtau_dt[:, -1:])**2
+               - self.qd1 * self.td1 * (qd - qm1) * (dtau_dt[:, -1] - dtau_dt[:, -2])[:, None]
+               - self.qdd1 * qd
+               - self.qdd2 * qm1) / self.qdd3
+        return q1, q2, qm2, qm1
+
     def __call__(self, x):
         raise NotImplementedError()
 
@@ -84,17 +97,12 @@ class BSplineApproximatorNDoF(BSplineApproximator):
 
         x = self.fc(x)
         q_est = self.q_est(x)
-        log_dtau_dt = self.t_est(x)
-        #dtau_dt = torch.exp(dtau_dt)
-
-        # todo think about the expected time scaling
-        log_dtau_dt = log_dtau_dt# / expected_time[:, None]
+        ds_dt = self.t_est(x)
 
         q = torch.pi * torch.reshape(q_est, (-1, self.n_q_bsp_control_points, self.n_dim))
-        #q = torch.reshape(q_est, (-1, self.n_q_bsp_control_points, self.n_dim))
         s = torch.linspace(0., 1., q.shape[1] + 2)[None, 1:-1, None].to(q.device)
 
-        q1, q2, qm2, qm1 = self.compute_boundary_control_points(torch.exp(log_dtau_dt), q0, dq0, ddq0, qd, dqd, ddqd)
+        q1, q2, qm2, qm1 = self.compute_boundary_control_points(ds_dt, q0, dq0, ddq0, qd, dqd, ddqd)
 
         q0 = q0[:, None]
         q1 = q1[:, None]
@@ -123,7 +131,7 @@ class BSplineApproximatorNDoF(BSplineApproximator):
 
         x = torch.cat(q_begin + [q + qb] + q_end[::-1], axis=-2)
 
-        return x, log_dtau_dt
+        return x, ds_dt
 
 
 class BSplineApproximatorAirHockey(BSplineApproximatorNDoF):
@@ -198,16 +206,12 @@ class BSplineApproximatorAirHockeySeparated(BSplineApproximatorNDoF):
         x = torch.cat([puck_, puck_dot_, q0_, dq0_, opponent_mallet_], axis=-1)
         x = self.fc(x)
         q_est = self.q_est(x)
-        log_dtau_dt = self.t_est(x)
-        #dtau_dt = torch.exp(dtau_dt)
-
-        # todo think about the expected time scaling
-        log_dtau_dt = log_dtau_dt# / expected_time[:, None]
+        ds_dt = self.t_est(x)
 
         q = torch.pi * torch.reshape(q_est, (-1, self.n_q_bsp_control_points, self.n_dim))
         s = torch.linspace(0., 1., q.shape[1] + 2)[None, 1:-1, None].to(q.device)
 
-        q1, q2, qm2, qm1 = self.compute_boundary_control_points(torch.exp(log_dtau_dt), q0, dq0, ddq0, qd, dqd, ddqd)
+        q1, q2, qm2, qm1 = self.compute_boundary_control_points_exp(ds_dt, q0, dq0, ddq0, qd, dqd, ddqd)
 
         q0 = q0[:, None]
         q1 = q1[:, None]
@@ -236,7 +240,7 @@ class BSplineApproximatorAirHockeySeparated(BSplineApproximatorNDoF):
 
         x = torch.cat(q_begin + [q + qb] + q_end[::-1], axis=-2)
 
-        return x, log_dtau_dt
+        return x, ds_dt
 
 
 class BSplineApproximatorAirHockeyWrapper(BSplineApproximatorAirHockey):

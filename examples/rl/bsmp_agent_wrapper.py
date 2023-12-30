@@ -29,9 +29,7 @@ class BSMPAgent(AgentBase):
         return self.bsmp_agent.draw_action(state, policy_state)
 
     def episode_start(self, initial_state, episode_info):
-        policy_states, theta = self.bsmp_agent.compute_trajectory(initial_state[None])
-        policy_states[0]['iteration'] = 0
-        return policy_states[0], theta[0]
+        return self.bsmp_agent.episode_start(initial_state, episode_info)
 
     def episode_start_vectorized(self, initial_states, episode_info, start_mask):
         policy_states, theta = self.bsmp_agent.compute_trajectory(initial_states)

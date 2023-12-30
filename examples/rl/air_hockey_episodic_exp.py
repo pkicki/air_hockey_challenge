@@ -7,6 +7,14 @@ import torch.optim as optim
 import torch.random
 import wandb
 from experiment_launcher import run_experiment, single_experiment
+from examples.rl.bsmp.bsmp_distribution import DiagonalGaussianBSMPDistribution
+
+from examples.rl.bsmp.bsmp_eppo import BSMPePPO
+from examples.rl.bsmp.bsmp_policy import BSMPPolicy
+from examples.rl.bsmp.bspline import BSpline
+from examples.rl.bsmp.bspline_timeoptimal_approximator import BSplineFastApproximatorAirHockeyWrapper
+from examples.rl.bsmp.context_builder import IdentityContextBuilder
+from examples.rl.bsmp.network import ConfigurationTimeNetwork, ConfigurationTimeNetworkWrapper
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', )))
@@ -20,12 +28,12 @@ from rewards import HitReward, DefendReward, PrepareReward
 from rl_agent_wrapper import RlAgent
 from bsmp_agent_wrapper import BSMPAgent
 from bsmp.agent import BSMP
-from mushroom_rl.algorithms.actor_critic import SAC
+
 from mushroom_rl.core import Logger, Agent, MultiprocessEnvironment
-from mushroom_rl.rl_utils.spaces import Box
-from mushroom_rl.utils.frames import LazyFrames
-from mushroom_rl.rl_utils.preprocessors import MinMaxPreprocessor
 from mushroom_rl.utils.torch import TorchUtils
+from mushroom_rl.approximators import Regressor
+from mushroom_rl.approximators.parametric import TorchApproximator
+from mushroom_rl.rl_utils.optimizers import AdaptiveOptimizer
 
 def custom_repr(self):
     return f'{{Tensor:{tuple(self.shape)}}} {original_repr(self)}'
@@ -36,7 +44,7 @@ torch.Tensor.__repr__ = custom_repr
 @single_experiment
 def experiment(env: str = '7dof-hit',
                n_envs: int = 1,
-               alg: str = "bsmp",
+               alg: str = "bsmp_eppo",
                n_epochs: int = 100000,
                n_steps: int = None,
                n_steps_per_fit: int = None,
@@ -120,8 +128,9 @@ def experiment(env: str = '7dof-hit',
         core.learn(n_steps=n_steps, n_steps_per_fit=n_steps_per_fit,
                    n_episodes=n_episodes, n_episodes_per_fit=n_episodes_per_fit, quiet=quiet)
 
-        if hasattr(agent, "update_alphas"):
-            agent.update_alphas()
+        #if hasattr(agent, "update_alphas"):
+        #    agent.update_alphas()
+
         # Evaluate
         J, R, success, c_avg, c_max = compute_metrics(core, eval_params)
 
@@ -205,6 +214,10 @@ def agent_builder(env_info, agent_params):
     if alg == "bsmp":
         bsmp_agent = build_agent_BSMP(env_info, **agent_params)
         return BSMPAgent(env_info, bsmp_agent)
+    elif alg == "bsmp_eppo":
+        bsmp_agent = build_agent_BSMPePPO(env_info, **agent_params)
+        return BSMPAgent(env_info, bsmp_agent)
+
 
 
 def build_agent_BSMP(env_info, **agent_params):
@@ -224,6 +237,63 @@ def build_agent_BSMP(env_info, **agent_params):
     agent = BSMP(env_info['rl_info'], robot_constraints, env_info["dt"], **agent_params)
     return agent
 
+
+def build_agent_BSMPePPO(env_info, **agent_params):
+
+    table_constraints = env_info["constraints"].get("ee_constr")
+    robot_constraints = dict(
+        q = env_info["robot"]["joint_pos_limit"][-1],
+        q_dot = env_info["robot"]["joint_vel_limit"][-1],
+        q_ddot = env_info["robot"]["joint_acc_limit"][-1],
+        z_ee = (table_constraints.z_lb + table_constraints.z_ub) / 2.,
+        x_ee_lb = table_constraints.x_lb,
+        y_ee_lb = table_constraints.y_lb,
+        y_ee_ub = table_constraints.y_ub,
+    )
+    n_q_pts = agent_params["n_q_cps"]
+    n_t_pts = agent_params["n_t_cps"]
+    n_pts_fixed_begin = agent_params["n_pts_fixed_begin"]
+    n_pts_fixed_end = agent_params["n_pts_fixed_end"]
+    n_dim = agent_params["n_dim"]
+    n_trainable_q_pts = n_q_pts - (n_pts_fixed_begin + n_pts_fixed_end)
+    n_trainable_t_pts = n_t_pts
+    n_trainable_pts = n_dim * n_trainable_q_pts + n_trainable_t_pts
+
+    q_bsp = BSpline(n_q_pts)
+    t_bsp = BSpline(n_t_pts)
+
+    mdp_info = env_info['rl_info']
+
+    mu_approximator = Regressor(TorchApproximator,
+                                network=ConfigurationTimeNetworkWrapper,
+                                batch_size=1,
+                                params={
+                                        "input_space": mdp_info.observation_space,
+                                        },
+                                input_shape=(mdp_info.observation_space.shape[0],),
+                                output_shape=(n_dim * n_trainable_q_pts, n_trainable_t_pts))
+
+    sigma = 2e-0 * torch.ones(n_trainable_pts)
+    policy = BSMPPolicy(env_info["dt"], n_q_pts, n_dim, n_t_pts, n_pts_fixed_begin, n_pts_fixed_end)
+    dist = DiagonalGaussianBSMPDistribution(mu_approximator, sigma)
+
+    #sigma_optimizer = AdaptiveOptimizer(eps=0.3)
+    #mu_optimizer = torch.optim.Adam(self.mu_approximator.model.network.parameters(), lr=agent_params["mu_lr"])
+    optimizer = {'class': optim.Adam,
+                 'params': {'lr': agent_params["mu_lr"],
+                            'weight_decay': 0.0}}
+
+    context_builder = IdentityContextBuilder()
+
+    eppo_params = dict(n_epochs_policy=50,
+                       batch_size=25,
+                       eps_ppo=5e-2,
+                       context_builder=context_builder
+                       )
+
+    agent = BSMPePPO(mdp_info, dist, policy, optimizer, robot_constraints,
+                     agent_params["constraint_lr"], **eppo_params)
+    return agent
 
 def compute_metrics(core, eval_params):
     dataset = core.evaluate(**eval_params)

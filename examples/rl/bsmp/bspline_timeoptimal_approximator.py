@@ -47,20 +47,6 @@ class BSplineFastApproximatorNDoF(BSplineApproximator):
         x = self.normalize_input(x)
         return x, q0, qd, dq0, dqd, ddq0, ddqd
 
-    def compute_boundary_control_points_exp(self, dtau_dt, q0, q_dot_0, q_ddot_0, qd, q_dot_d, q_ddot_d):
-        q1 = q_dot_0 / (torch.exp(dtau_dt[:, :1]) * self.qd1) + q0
-        qm1 = qd - q_dot_d / (torch.exp(dtau_dt[:, -1:]) * self.qd1)
-        q2 = (q_ddot_0 / torch.exp(dtau_dt[:, :1])**2
-              - self.qd1 * self.td1 * (q1 - q0) * (dtau_dt[:, 1] - dtau_dt[:, 0])[:, None]
-              - self.qdd1 * q0
-              - self.qdd2 * q1) / self.qdd3
-        qm2 = (q_ddot_d / torch.exp(dtau_dt[:, -1:])**2
-               - self.qd1 * self.td1 * (qd - qm1) * (dtau_dt[:, -1] - dtau_dt[:, -2])[:, None]
-               - self.qdd1 * qd
-               - self.qdd2 * qm1) / self.qdd3
-        return q1, q2, qm2, qm1
-
-
     def __call__(self, x):
         x, q0, qd, dq0, dqd, ddq0, ddqd = self.prepare_data(x)
 
@@ -113,6 +99,7 @@ class BSplineFastApproximatorNDoF(BSplineApproximator):
         if q_begin and q_end:
             qb = q_begin[0] * (1 - s) + q_end[0] * s
 
+        q_trainable
         q_cps = torch.cat(q_begin + [q + qb] + q_end[::-1], axis=-2)
 
         #from time import perf_counter
