@@ -34,6 +34,7 @@ from mushroom_rl.utils.torch import TorchUtils
 from mushroom_rl.approximators import Regressor
 from mushroom_rl.approximators.parametric import TorchApproximator
 from mushroom_rl.rl_utils.optimizers import AdaptiveOptimizer
+from mushroom_rl.distributions import DiagonalGaussianTorchDistribution
 
 def custom_repr(self):
     return f'{{Tensor:{tuple(self.shape)}}} {original_repr(self)}'
@@ -48,11 +49,11 @@ def experiment(env: str = '7dof-hit',
                n_epochs: int = 100000,
                n_steps: int = None,
                n_steps_per_fit: int = None,
-               n_episodes: int = 2,
-               n_episodes_per_fit: int = 2,
-               n_eval_episodes: int = 1,
+               n_episodes: int = 32,
+               n_episodes_per_fit: int = 32,
+               n_eval_episodes: int = 5,
 
-               batch_size: int = 64,
+               batch_size: int = 32,
                use_cuda: bool = False,
 
                interpolation_order: int = -1,
@@ -62,20 +63,45 @@ def experiment(env: str = '7dof-hit',
                debug: bool = False,
                seed: int = 444,
                quiet: bool = True,
-               #render: bool = True,
-               render: bool = False,
+               render: bool = True,
+               #render: bool = False,
                results_dir: str = './logs',
                **kwargs):
     np.random.seed(seed)
     torch.manual_seed(seed)
+
+    # TODO: add parameter regarding the constraint loss stuff
+    agent_params = dict(
+        alg=alg,
+        checkpoint=checkpoint,
+        seed=seed,
+        n_q_cps=kwargs['n_q_cps'] if 'n_q_cps' in kwargs.keys() else 11,
+        n_t_cps=kwargs['n_t_cps'] if 'n_t_cps' in kwargs.keys() else 10,
+        n_pts_fixed_begin=3,
+        n_pts_fixed_end=0,
+        sigma_init=['sigma_init'] if 'sigma_init' in kwargs.keys() else 0.1,
+        sigma_eps=['sigma_eps'] if 'sigma_eps' in kwargs.keys() else 1e-2,
+        constraint_lr=kwargs['constraint_lr'] if 'constraint_lr' in kwargs.keys() else 1e-2,
+        mu_lr=kwargs['mu_lr'] if 'mu_lr' in kwargs.keys() else 1e-2,
+        n_epochs_policy=kwargs['n_epochs_policy'] if 'n_epochs_policy' in kwargs.keys() else 4,
+        batch_size=batch_size,
+        eps_ppo=kwargs['eps_ppo'] if 'eps_ppo' in kwargs.keys() else 5e-2,
+        ent_coeff=kwargs['ent_coeff'] if 'ent_coeff' in kwargs.keys() else 0e-2,
+    )
+
+    name = f"""ePPO_stillsamepose_nonn_lr{agent_params['mu_lr']}_bs{batch_size}_constrlr{agent_params['constraint_lr']}_
+               nep{n_episodes}_neppf{n_episodes_per_fit}_neppol{agent_params['n_epochs_policy']}_epsppo{agent_params['eps_ppo']}_
+               sigmainit{agent_params['sigma_init']}_ent{agent_params['ent_coeff']}_seed{seed}"""
+
+    results_dir = os.path.join(results_dir, name)
 
     logger = Logger(log_name=env, results_dir=results_dir, seed=seed)
 
     if use_cuda:
         TorchUtils.set_default_device('cuda')
 
-    #wandb_run = wandb.init(project="air_hockey_challenge", config={}, dir=results_dir, name=f"seed_{seed}",
-    #           group=f'{env}_{alg}_acc-{double_integration}', tags=[str(env), str(slack_beta)])
+    wandb_run = wandb.init(project="air_hockey_challenge", config={}, dir=results_dir, name=name,
+               group=f'{env}_{alg}_ePPO', tags=[str(env)])
 
     eval_params = dict(
         n_episodes=n_eval_episodes,
@@ -94,24 +120,11 @@ def experiment(env: str = '7dof-hit',
 
     env, env_info_ = env_builder(env, n_envs, env_params)
 
-    # TODO: add parameter regarding the constraint loss stuff
-    agent_params = dict(
-        alg=alg,
-        checkpoint=checkpoint,
-        seed=seed,
-        n_q_cps=kwargs['n_q_cps'] if 'n_q_cps' in kwargs.keys() else 11,
-        n_t_cps=kwargs['n_t_cps'] if 'n_t_cps' in kwargs.keys() else 10,
-        n_dim=env_info_["robot"]["n_joints"],
-        n_pts_fixed_begin=3,
-        n_pts_fixed_end=0,
-        sigma_init=['sigma_init'] if 'sigma_init' in kwargs.keys() else 0.1,
-        sigma_eps=['sigma_eps'] if 'sigma_eps' in kwargs.keys() else 1e-2,
-        constraint_lr=kwargs['constraint_lr'] if 'constraint_lr' in kwargs.keys() else 1e-2,
-        mu_lr=kwargs['mu_lr'] if 'mu_lr' in kwargs.keys() else 5e-5,
-    )
+    agent_params["n_dim"] = env_info_["robot"]["n_joints"]
 
     agent = agent_builder(env_info_, agent_params)
-    #agent = Agent.load("./logs/0/7dof-hit/agent-0.msh")
+    #agent = Agent.load("./logs/444/7dof-hit/agent-444.msh")
+    #agent = Agent.load(os.path.join(os.path.dirname(__file__), "logs/444/7dof-hit/agent-444.msh"))
     #agent = Agent.load(os.path.join(os.path.dirname(__file__), "trained_models/0/7dof-hit/agent-0.msh"))
     #agent = Agent.load(os.path.join(os.path.dirname(__file__), "trained_models/noee/7dof-hit/agent-0.msh"))
     #agent.bsmp_agent.load_robot()
@@ -127,9 +140,6 @@ def experiment(env: str = '7dof-hit',
         print("Epoch: ", epoch)
         core.learn(n_steps=n_steps, n_steps_per_fit=n_steps_per_fit,
                    n_episodes=n_episodes, n_episodes_per_fit=n_episodes_per_fit, quiet=quiet)
-
-        #if hasattr(agent, "update_alphas"):
-        #    agent.update_alphas()
 
         # Evaluate
         J, R, success, c_avg, c_max = compute_metrics(core, eval_params)
@@ -273,9 +283,12 @@ def build_agent_BSMPePPO(env_info, **agent_params):
                                 input_shape=(mdp_info.observation_space.shape[0],),
                                 output_shape=(n_dim * n_trainable_q_pts, n_trainable_t_pts))
 
-    sigma = 2e-0 * torch.ones(n_trainable_pts)
-    policy = BSMPPolicy(env_info["dt"], n_q_pts, n_dim, n_t_pts, n_pts_fixed_begin, n_pts_fixed_end)
-    dist = DiagonalGaussianBSMPDistribution(mu_approximator, sigma)
+    mu = torch.zeros(n_trainable_pts)
+    sigma = agent_params["sigma_init"] * torch.ones(n_trainable_pts)
+    policy = BSMPPolicy(env_info["dt"], n_q_pts, n_dim, n_t_pts, n_pts_fixed_begin, n_pts_fixed_end, robot_constraints)
+    #dist = DiagonalGaussianBSMPDistribution(mu_approximator, sigma)
+    dist = DiagonalGaussianTorchDistribution(mu, sigma)
+
 
     #sigma_optimizer = AdaptiveOptimizer(eps=0.3)
     #mu_optimizer = torch.optim.Adam(self.mu_approximator.model.network.parameters(), lr=agent_params["mu_lr"])
@@ -283,11 +296,13 @@ def build_agent_BSMPePPO(env_info, **agent_params):
                  'params': {'lr': agent_params["mu_lr"],
                             'weight_decay': 0.0}}
 
-    context_builder = IdentityContextBuilder()
+    #context_builder = IdentityContextBuilder()
+    context_builder = None
 
-    eppo_params = dict(n_epochs_policy=50,
-                       batch_size=25,
-                       eps_ppo=5e-2,
+    eppo_params = dict(n_epochs_policy=agent_params["n_epochs_policy"],
+                       batch_size=agent_params["batch_size"],
+                       eps_ppo=agent_params["sigma_eps"],
+                       ent_coeff=agent_params["ent_coeff"],
                        context_builder=context_builder
                        )
 
@@ -296,7 +311,11 @@ def build_agent_BSMPePPO(env_info, **agent_params):
     return agent
 
 def compute_metrics(core, eval_params):
-    dataset = core.evaluate(**eval_params)
+    with torch.no_grad():
+        tmp = core.agent.bsmp_agent.distribution._log_sigma.data.detach().clone()
+        core.agent.bsmp_agent.distribution._log_sigma.copy_(-1e1 * torch.ones_like(tmp))
+        dataset = core.evaluate(**eval_params)
+    core.agent.bsmp_agent.distribution._log_sigma = torch.nn.Parameter(tmp)
 
     J = np.mean(dataset.discounted_return)
     R = np.mean(dataset.reward)
