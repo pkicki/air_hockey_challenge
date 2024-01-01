@@ -1,7 +1,9 @@
+import os
 import numpy as np
 import torch
 from examples.rl.bsmp.bspline import BSpline
 from scipy.interpolate import interp1d
+import matplotlib.pyplot as plt
 
 from mushroom_rl.policy import Policy
 
@@ -9,7 +11,7 @@ from examples.rl.bsmp.utils import unpack_data_airhockey
 
 
 class BSMPPolicy(Policy):
-    def __init__(self, dt, n_q_pts, n_dim, n_t_pts, n_pts_fixed_begin=1, n_pts_fixed_end=1):
+    def __init__(self, dt, n_q_pts, n_dim, n_t_pts, n_pts_fixed_begin=1, n_pts_fixed_end=1, robot_constraints=None):
         self.dt = dt
         self.n_dim = n_dim
         self._n_q_pts = n_q_pts
@@ -36,27 +38,83 @@ class BSMPPolicy(Policy):
         self._trainable_q_cps = None
         self._trainable_t_cps = None
 
+        self._traj_no = 0
+        self._robot_constraints = robot_constraints
+
         policy_state_shape = tuple()
         super().__init__(policy_state_shape)
 
         self._add_save_attr(
-            _dt='primitive',
+            dt='primitive',
+            n_dim='primitive',
+            _n_q_pts='primitive',
+            _n_t_pts='primitive',
+            _n_pts_fixed_begin='primitive',
+            _n_pts_fixed_end='primitive',
+            _n_trainable_q_pts='primitive',
+            _n_trainable_t_pts='primitive',
+            _q_bsp='pickle',
+            _t_bsp='pickle',
+            _qdd1='primitive',
+            _qdd2='primitive',
+            _qdd3='primitive',
+            _qd1='primitive',
+            _td1='primitive',
         )
 
     def unpack_context(self, context):
-        puck, puck_dot, q0, qd, dq0, dqd, ddq0, ddqd, opponent_mallet = unpack_data_airhockey(torch.tensor(context))
-        return q0[:, None], qd[:, None], dq0[:, None], dqd[:, None], ddq0[:, None], ddqd[:, None]
+        if context is None:
+            q_0 = torch.tensor([[0., -0.196067, 0., -1.84364, 0., 0.970422, 0.]])
+            q_d = torch.zeros((1, self.n_dim))
+            q_dot_0 = torch.zeros((1, self.n_dim))
+            q_dot_d = torch.zeros((1, self.n_dim))
+            q_ddot_0 = torch.zeros((1, self.n_dim))
+            q_ddot_d = torch.zeros((1, self.n_dim))
+        else:
+            puck, puck_dot, q_0, q_d, q_dot_0, q_dot_d, q_ddot_0, q_ddot_d, opponent_mallet = unpack_data_airhockey(torch.tensor(context))
+        return q_0[:, None], q_d[:, None], q_dot_0[:, None], q_dot_d[:, None], q_ddot_0[:, None], q_ddot_d[:, None]
 
     def compute_trajectory_from_theta(self, theta, context):
-        q_0, q_d, q_dot_0, q_dot_d, q_ddot_0, q_ddot_d = self.unpack_context(torch.tensor(context))
+        q_0, q_d, q_dot_0, q_dot_d, q_ddot_0, q_ddot_d = self.unpack_context(context)
         trainable_q_cps, trainable_t_cps = self.extract_qt(theta)
         q1, q2, qm2, qm1 = self.compute_boundary_control_points_exp(trainable_t_cps, q_0, q_dot_0, q_ddot_0,
                                                                     q_d, q_dot_d, q_ddot_d)
         q_begin = [q_0, q1, q2]
         q_end = [q_d, qm1, qm2]
-        q_cps = torch.cat(q_begin[:self._n_pts_fixed_begin] + [trainable_q_cps] + q_end[:self._n_pts_fixed_end][::-1], axis=-2)
+        q_cps = torch.cat(q_begin[:self._n_pts_fixed_begin] + [q_0 + torch.pi * trainable_q_cps] + q_end[:self._n_pts_fixed_end][::-1], axis=-2)
         #q, q_dot, q_ddot, t, dt, duration = self.compute_trajectory(q_cps.detach().numpy(), trainable_t_cps.detach().numpy())
+        #q_cps_ = q_cps.detach().numpy()[0]
+        #t_cps_ = trainable_t_cps.detach().numpy()[0]
+        #for i in range(self.n_dim):
+        #    plt.subplot(1, 8, 1+i)
+        #    plt.plot(q_cps_[:, i])
+        #plt.subplot(1, 8, 1+self.n_dim)
+        #plt.plot(t_cps_)
+        ##plt.show()
+        #plt.savefig(os.path.join(os.path.dirname(__file__), "..", f"imgs/cps_{self._traj_no}.png"))
+        #plt.clf()
+
         q, q_dot, q_ddot, t, dt, duration = self.compute_trajectory(q_cps.to(torch.float32), trainable_t_cps.to(torch.float32), differentiable=True)
+        #q_ = q.detach().numpy()[0]
+        #q_dot_ = q_dot.detach().numpy()[0]
+        #q_ddot_ = q_ddot.detach().numpy()[0]
+        #t_ = t.detach().numpy()[0]
+        #qdl = self._robot_constraints['q_dot']
+        #qddl = self._robot_constraints['q_ddot']
+        #for i in range(self.n_dim):
+        #    plt.subplot(3, 7, 1+i)
+        #    plt.plot(t_, q_[:, i])
+        #    plt.subplot(3, 7, 1+i+self.n_dim)
+        #    plt.plot(t_, q_dot_[:, i])
+        #    plt.plot([t_[0], t_[-1]], [qdl[i], qdl[i]], 'r--')
+        #    plt.plot([t_[0], t_[-1]], [-qdl[i], -qdl[i]], 'r--')
+        #    plt.subplot(3, 7, 1+i+2*self.n_dim)
+        #    plt.plot(t_, q_ddot_[:, i])
+        #    plt.plot([t_[0], t_[-1]], [qddl[i], qddl[i]], 'r--')
+        #    plt.plot([t_[0], t_[-1]], [-qddl[i], -qddl[i]], 'r--')
+        #plt.savefig(os.path.join(os.path.dirname(__file__), "..", f"imgs/traj_{self._traj_no}.png"))
+        #plt.clf()
+        self._traj_no += 1
         return q, q_dot, q_ddot, t, dt, duration
 
 
@@ -98,6 +156,8 @@ class BSMPPolicy(Policy):
 
     def extract_qt(self, x):
         # TODO: make it suitable for parallel envs
+        if len(x.shape) == 1:
+            x = x[None]
         q_cps = x[:, :self._n_trainable_q_pts * self.n_dim]
         t_cps = x[:, self._n_trainable_q_pts * self.n_dim:]
         q_cps = q_cps.reshape(-1, self._n_trainable_q_pts, self.n_dim)

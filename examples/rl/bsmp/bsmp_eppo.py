@@ -1,6 +1,7 @@
 from copy import copy
 import os
 from time import perf_counter
+import matplotlib.pyplot as plt
 
 import torch
 import numpy as np
@@ -38,6 +39,7 @@ class BSMPePPO(ePPO):
 
         self.urdf_path = os.path.join(os.path.dirname(__file__), "iiwa_striker.urdf")
         self.load_robot()
+        self._epoch_no = 0
 
         super().__init__(mdp_info, distribution, policy, optimizer, n_epochs_policy,
                          batch_size, eps_ppo, ent_coeff, context_builder)
@@ -57,7 +59,8 @@ class BSMPePPO(ePPO):
 
     def episode_start(self, initial_state, episode_info):
         policy_state, theta = super().episode_start(initial_state, episode_info)
-        return self.policy.reset(initial_state), theta[0]
+        return self.policy.reset(initial_state), theta
+        #return self.policy.reset(initial_state), theta[0]
 
     def load_robot(self):
         self.robot = DifferentiableRobotModel(urdf_path=self.urdf_path, name="iiwa", device="cpu")
@@ -83,7 +86,8 @@ class BSMPePPO(ePPO):
 
         # All constraint losses computation organized in a single function
         def compute_constraint_losses(context):
-            mu = self.distribution.estimate_mu(context)
+            #mu = self.distribution.estimate_mu(context)
+            mu = self.distribution._mu
             q, q_dot, q_ddot, t, dt, duration = self.policy.compute_trajectory_from_theta(mu, context)
 
             #q_cps, t_log_cps = self._unpack_qt(x)
@@ -135,7 +139,6 @@ class BSMPePPO(ePPO):
                 clipped_ratio = torch.clamp(prob_ratio, 1 - self._eps_ppo(), 1 + self._eps_ppo.get_value())
                 loss = -torch.mean(torch.min(prob_ratio * Jep_i, clipped_ratio * Jep_i))
                 loss -= torch.mean(self._ent_coeff() * self.distribution.entropy(context_i))
-                #loss -= self._ent_coeff() * self.distribution.entropy(theta_i)
 
                 # constraint loss
                 constraint_losses = compute_constraint_losses(context_i)
@@ -146,3 +149,41 @@ class BSMPePPO(ePPO):
                 loss.backward()
                 self._optimizer.step()
             self.update_alphas()
+            mu = self.distribution._mu
+            q, q_dot, q_ddot, t, dt, duration = self.policy.compute_trajectory_from_theta(mu, context)
+            q_ = q.detach().numpy()[0]
+            q_dot_ = q_dot.detach().numpy()[0]
+            q_ddot_ = q_ddot.detach().numpy()[0]
+            t_ = t.detach().numpy()[0]
+            qdl = self.robot_constraints['q_dot']
+            qddl = self.robot_constraints['q_ddot']
+            q_fk = q.reshape((-1, q.shape[-1]))
+            q_fk = torch.cat([q_fk, torch.zeros((q_fk.shape[0], 9 - q_fk.shape[1]))], dim=-1)
+            ee_pos, ee_quat = self.robot.compute_forward_kinematics(q_fk, "F_striker_tip")
+            ee_pos = ee_pos.reshape((q.shape[0], q.shape[1], 3)).detach().numpy()
+            ee_quat = ee_quat.reshape((q.shape[0], q.shape[1], 4)).detach().numpy()
+
+            plt.subplot(121)
+            plt.plot(ee_pos[0, :, 0], ee_pos[0, :, 1])
+            plt.subplot(122)
+            plt.plot(t_, ee_pos[0, :, 2])
+            plt.savefig(os.path.join(os.path.dirname(__file__), "..", f"imgs/xyz_{self._epoch_no}.png"))
+            plt.clf()
+
+            n_dim = 7
+            for i in range(n_dim):
+                plt.subplot(3, 7, 1+i)
+                plt.plot(t_, q_[:, i])
+                plt.subplot(3, 7, 1+i+n_dim)
+                plt.plot(t_, q_dot_[:, i])
+                plt.plot([t_[0], t_[-1]], [qdl[i], qdl[i]], 'r--')
+                plt.plot([t_[0], t_[-1]], [-qdl[i], -qdl[i]], 'r--')
+                plt.subplot(3, 7, 1+i+2*n_dim)
+                plt.plot(t_, q_ddot_[:, i])
+                plt.plot([t_[0], t_[-1]], [qddl[i], qddl[i]], 'r--')
+                plt.plot([t_[0], t_[-1]], [-qddl[i], -qddl[i]], 'r--')
+            plt.savefig(os.path.join(os.path.dirname(__file__), "..", f"imgs/mean_traj_{self._epoch_no}.png"))
+            plt.clf()
+            self._epoch_no += 1
+            print("SIGMA: ", torch.exp(self.distribution._log_sigma))
+            print("ENTROPY: ", torch.mean(self.distribution.entropy(context_i)))
