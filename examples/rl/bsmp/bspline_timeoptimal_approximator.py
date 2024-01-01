@@ -99,7 +99,6 @@ class BSplineFastApproximatorNDoF(BSplineApproximator):
         if q_begin and q_end:
             qb = q_begin[0] * (1 - s) + q_end[0] * s
 
-        q_trainable
         q_cps = torch.cat(q_begin + [q + qb] + q_end[::-1], axis=-2)
 
         #from time import perf_counter
