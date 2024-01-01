@@ -315,7 +315,7 @@ def compute_metrics(core, eval_params):
         tmp = core.agent.bsmp_agent.distribution._log_sigma.data.detach().clone()
         core.agent.bsmp_agent.distribution._log_sigma.copy_(-1e1 * torch.ones_like(tmp))
         dataset = core.evaluate(**eval_params)
-    core.agent.bsmp_agent.distribution._log_sigma = torch.nn.Parameter(tmp)
+        core.agent.bsmp_agent.distribution._log_sigma.copy_(tmp)
 
     J = np.mean(dataset.discounted_return)
     R = np.mean(dataset.reward)
