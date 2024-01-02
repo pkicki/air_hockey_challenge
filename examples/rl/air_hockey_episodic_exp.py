@@ -50,11 +50,11 @@ def experiment(env: str = '7dof-hit',
                n_epochs: int = 100000,
                n_steps: int = None,
                n_steps_per_fit: int = None,
-               n_episodes: int = 32,
-               n_episodes_per_fit: int = 32,
-               n_eval_episodes: int = 5,
+               n_episodes: int = 4,
+               n_episodes_per_fit: int = 4,
+               n_eval_episodes: int = 4,
 
-               batch_size: int = 32,
+               batch_size: int = 4,
                use_cuda: bool = False,
 
                interpolation_order: int = -1,
@@ -86,11 +86,11 @@ def experiment(env: str = '7dof-hit',
         mu_lr=kwargs['mu_lr'] if 'mu_lr' in kwargs.keys() else 1e-2,
         n_epochs_policy=kwargs['n_epochs_policy'] if 'n_epochs_policy' in kwargs.keys() else 4,
         batch_size=batch_size,
-        eps_ppo=kwargs['eps_ppo'] if 'eps_ppo' in kwargs.keys() else 5e-2,
+        eps_ppo=kwargs['eps_ppo'] if 'eps_ppo' in kwargs.keys() else 2e-2,
         ent_coeff=kwargs['ent_coeff'] if 'ent_coeff' in kwargs.keys() else 0e-2,
     )
 
-    name = f"""ePPO_stillsamepose_nonn_lr{agent_params['mu_lr']}_bs{batch_size}_constrlr{agent_params['constraint_lr']}_
+    name = f"""ePPO_stillsamepose_nn_lr{agent_params['mu_lr']}_bs{batch_size}_constrlr{agent_params['constraint_lr']}_
                nep{n_episodes}_neppf{n_episodes_per_fit}_neppol{agent_params['n_epochs_policy']}_epsppo{agent_params['eps_ppo']}_
                sigmainit{agent_params['sigma_init']}_ent{agent_params['ent_coeff']}_seed{seed}"""
 
@@ -101,8 +101,8 @@ def experiment(env: str = '7dof-hit',
     if use_cuda:
         TorchUtils.set_default_device('cuda')
 
-    wandb_run = wandb.init(project="air_hockey_challenge", config={}, dir=results_dir, name=name,
-               group=f'{env}_{alg}_ePPO', tags=[str(env)])
+    #wandb_run = wandb.init(project="air_hockey_challenge", config={}, dir=results_dir, name=name,
+    #           group=f'{env}_{alg}_ePPO_NN_diag', tags=[str(env)])
 
     eval_params = dict(
         n_episodes=n_eval_episodes,
@@ -124,11 +124,15 @@ def experiment(env: str = '7dof-hit',
     agent_params["n_dim"] = env_info_["robot"]["n_joints"]
 
     agent = agent_builder(env_info_, agent_params)
+    #agent_path = os.path.join(os.path.dirname(__file__), "trained_models/ePPO_stillsamepose_nonn_sigma_lr0.03_bs32_constrlr0.01_nep32_neppf32_neppol4_epsppo0.05_sigmainit0.1_ent0.0_seed444/7dof-hit/agent-444.msh")
+    #print("Load agent from: ", agent_path)
+    #agent = Agent.load(agent_path)
     #agent = Agent.load("./logs/444/7dof-hit/agent-444.msh")
     #agent = Agent.load(os.path.join(os.path.dirname(__file__), "logs/444/7dof-hit/agent-444.msh"))
     #agent = Agent.load(os.path.join(os.path.dirname(__file__), "trained_models/0/7dof-hit/agent-0.msh"))
     #agent = Agent.load(os.path.join(os.path.dirname(__file__), "trained_models/noee/7dof-hit/agent-0.msh"))
     #agent.bsmp_agent.load_robot()
+    #agent.bsmp_agent.policy._traj_no = 0
     #agent.bsmp_agent.q_log_t_cps_sigma_trainable = -1e2 * np.ones_like(agent.bsmp_agent.q_log_t_cps_sigma_trainable)
 
     if n_envs > 1:
@@ -172,7 +176,7 @@ def experiment(env: str = '7dof-hit',
             }, step=epoch)
         if best_success <= success:
             best_success = success
-            logger.log_agent(agent)
+            #logger.log_agent(agent)
 
     agent = Agent.load(os.path.join(logger.path, f"agent-{seed}.msh"))
 
@@ -294,7 +298,7 @@ def build_agent_BSMPePPO(env_info, **agent_params):
 
     mu = torch.zeros(n_trainable_pts)
     #sigma = agent_params["sigma_init"] * torch.ones(n_trainable_pts)
-    sigma = agent_params["sigma_init"] * torch.eye(n_trainable_pts)
+    sigma = agent_params["sigma_init"]**2 * torch.eye(n_trainable_pts)
     policy = BSMPPolicy(env_info["dt"], n_q_pts, n_dim, n_t_pts, n_pts_fixed_begin, n_pts_fixed_end, robot_constraints)
     #dist = DiagonalGaussianBSMPSigmaDistribution(mu_approximator, log_sigma_approximator)
     #dist = DiagonalGaussianBSMPDistribution(mu_approximator, sigma)
