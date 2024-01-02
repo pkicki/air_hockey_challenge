@@ -8,7 +8,6 @@ import torch.random
 import wandb
 from experiment_launcher import run_experiment, single_experiment
 from examples.rl.bsmp.bsmp_distribution import DiagonalGaussianBSMPDistribution
-from examples.rl.bsmp.bsmp_distribution_sigma import DiagonalGaussianBSMPSigmaDistribution
 
 from examples.rl.bsmp.bsmp_eppo import BSMPePPO
 from examples.rl.bsmp.bsmp_policy import BSMPPolicy
