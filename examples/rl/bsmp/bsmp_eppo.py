@@ -179,7 +179,7 @@ class BSMPePPO(ePPO):
             plt.savefig(os.path.join(os.path.dirname(__file__), "..", f"imgs/mean_traj_{self._epoch_no}.png"))
             plt.clf()
             self._epoch_no += 1
-        print("SIGMA: ", torch.exp(self.distribution._chol_sigma))
+        print("SIGMA: ", self.distribution._chol_sigma)
         #print("SIGMA: ", torch.exp(self.distribution._log_sigma))
         #print("SIGMA: ", torch.exp(self.distribution._log_sigma_approximator(context_i[:1])))
         print("ENTROPY: ", torch.mean(self.distribution.entropy(context)))
