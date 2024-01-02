@@ -90,13 +90,6 @@ class BSMPePPO(ePPO):
             mu = self.distribution._mu
             q, q_dot, q_ddot, t, dt, duration = self.policy.compute_trajectory_from_theta(mu, context)
 
-            #q_cps, t_log_cps = self._unpack_qt(x)
-            #q_cps = q_cps.reshape((x.shape[0], self._n_q_pts, self._n_dim))
-            #t_log_cps = t_log_cps.reshape((x.shape[0], self._n_t_pts, 1))
-            ##t_cps = torch.exp(t_log_cps)
-            #t_cps = t_log_cps
-            #q, q_dot, q_ddot, t, dt, duration = self.policy.compute_trajectory(q_cps, t_cps, differentiable=True)
-
             dt_ = dt[..., None]
             q_dot_loss = limit_loss(torch.abs(q_dot), dt_, q_dot_limits)
             q_ddot_loss = limit_loss(torch.abs(q_ddot), dt_, q_ddot_limits)
@@ -150,6 +143,7 @@ class BSMPePPO(ePPO):
                 self._optimizer.step()
             self.update_alphas()
             mu = self.distribution._mu
+            #mu = self.distribution.estimate_mu(context)
             q, q_dot, q_ddot, t, dt, duration = self.policy.compute_trajectory_from_theta(mu, context)
             q_ = q.detach().numpy()[0]
             q_dot_ = q_dot.detach().numpy()[0]
@@ -185,5 +179,7 @@ class BSMPePPO(ePPO):
             plt.savefig(os.path.join(os.path.dirname(__file__), "..", f"imgs/mean_traj_{self._epoch_no}.png"))
             plt.clf()
             self._epoch_no += 1
-            print("SIGMA: ", torch.exp(self.distribution._log_sigma))
-            print("ENTROPY: ", torch.mean(self.distribution.entropy(context_i)))
+        print("SIGMA: ", torch.exp(self.distribution._chol_sigma))
+        #print("SIGMA: ", torch.exp(self.distribution._log_sigma))
+        #print("SIGMA: ", torch.exp(self.distribution._log_sigma_approximator(context_i[:1])))
+        print("ENTROPY: ", torch.mean(self.distribution.entropy(context)))

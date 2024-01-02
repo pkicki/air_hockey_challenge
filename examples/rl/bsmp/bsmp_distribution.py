@@ -25,14 +25,9 @@ class DiagonalGaussianBSMPDistribution(AbstractGaussianTorchDistribution):
             context = np.zeros(self._mu_approximator.input_shape, dtype=np.float32)[None]
         if len(context.shape) == 1:
             context = context[None]
-        #q_cps_mu, t_cps_mu = self._mu_approximator.model.network(
-        #    torch.from_numpy(context).to(TorchUtils.get_device()).to(torch.float32))
         if isinstance(context, np.ndarray):
             context = torch.from_numpy(context)
-        q_cps_mu, t_cps_mu = self._mu_approximator.model.network(context.to(TorchUtils.get_device()))
-        # TODO: probably will cause troubles if used with batch size > 1
-        #mu = torch.cat((q_cps_mu.flatten(), t_cps_mu.flatten()))
-        mu = torch.cat((q_cps_mu, t_cps_mu), dim=-1)
+        mu = self._mu_approximator(context)
         return mu
 
     def _get_mean_and_chol(self, context):

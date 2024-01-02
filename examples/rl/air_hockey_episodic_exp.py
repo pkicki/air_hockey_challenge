@@ -8,13 +8,14 @@ import torch.random
 import wandb
 from experiment_launcher import run_experiment, single_experiment
 from examples.rl.bsmp.bsmp_distribution import DiagonalGaussianBSMPDistribution
+from examples.rl.bsmp.bsmp_distribution_sigma import DiagonalGaussianBSMPSigmaDistribution
 
 from examples.rl.bsmp.bsmp_eppo import BSMPePPO
 from examples.rl.bsmp.bsmp_policy import BSMPPolicy
 from examples.rl.bsmp.bspline import BSpline
 from examples.rl.bsmp.bspline_timeoptimal_approximator import BSplineFastApproximatorAirHockeyWrapper
 from examples.rl.bsmp.context_builder import IdentityContextBuilder
-from examples.rl.bsmp.network import ConfigurationTimeNetwork, ConfigurationTimeNetworkWrapper
+from examples.rl.bsmp.network import ConfigurationTimeNetwork, ConfigurationTimeNetworkWrapper, LogSigmaNetworkWrapper
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', )))
@@ -34,7 +35,7 @@ from mushroom_rl.utils.torch import TorchUtils
 from mushroom_rl.approximators import Regressor
 from mushroom_rl.approximators.parametric import TorchApproximator
 from mushroom_rl.rl_utils.optimizers import AdaptiveOptimizer
-from mushroom_rl.distributions import DiagonalGaussianTorchDistribution
+from mushroom_rl.distributions import DiagonalGaussianTorchDistribution, CholeskyGaussianTorchDistribution
 
 def custom_repr(self):
     return f'{{Tensor:{tuple(self.shape)}}} {original_repr(self)}'
@@ -282,12 +283,23 @@ def build_agent_BSMPePPO(env_info, **agent_params):
                                         },
                                 input_shape=(mdp_info.observation_space.shape[0],),
                                 output_shape=(n_dim * n_trainable_q_pts, n_trainable_t_pts))
+    log_sigma_approximator = Regressor(TorchApproximator,
+                                network=LogSigmaNetworkWrapper,
+                                batch_size=1,
+                                params={
+                                        "input_space": mdp_info.observation_space,
+                                        },
+                                input_shape=(mdp_info.observation_space.shape[0],),
+                                output_shape=(n_dim * n_trainable_q_pts, n_trainable_t_pts))
 
     mu = torch.zeros(n_trainable_pts)
-    sigma = agent_params["sigma_init"] * torch.ones(n_trainable_pts)
+    #sigma = agent_params["sigma_init"] * torch.ones(n_trainable_pts)
+    sigma = agent_params["sigma_init"] * torch.eye(n_trainable_pts)
     policy = BSMPPolicy(env_info["dt"], n_q_pts, n_dim, n_t_pts, n_pts_fixed_begin, n_pts_fixed_end, robot_constraints)
+    #dist = DiagonalGaussianBSMPSigmaDistribution(mu_approximator, log_sigma_approximator)
     #dist = DiagonalGaussianBSMPDistribution(mu_approximator, sigma)
-    dist = DiagonalGaussianTorchDistribution(mu, sigma)
+    #dist = DiagonalGaussianTorchDistribution(mu, sigma)
+    dist = CholeskyGaussianTorchDistribution(mu, sigma)
 
 
     #sigma_optimizer = AdaptiveOptimizer(eps=0.3)
@@ -312,11 +324,21 @@ def build_agent_BSMPePPO(env_info, **agent_params):
     return agent
 
 def compute_metrics(core, eval_params):
+    #with torch.no_grad():
+    #    tmp = core.agent.bsmp_agent.distribution._log_sigma.data.detach().clone()
+    #    core.agent.bsmp_agent.distribution._log_sigma.copy_(-1e1 * torch.ones_like(tmp))
+    #    dataset = core.evaluate(**eval_params)
+    #    core.agent.bsmp_agent.distribution._log_sigma.copy_(tmp)
+    #core.agent.bsmp_agent.distribution._evaluate = True
     with torch.no_grad():
-        tmp = core.agent.bsmp_agent.distribution._log_sigma.data.detach().clone()
-        core.agent.bsmp_agent.distribution._log_sigma.copy_(-1e1 * torch.ones_like(tmp))
+        dist = copy(core.agent.bsmp_agent.distribution)
+        sigma = 1e-8 * torch.eye(dist._mu.shape[0])
+        dist_eval = CholeskyGaussianTorchDistribution(dist._mu, sigma)
+        #dist = DiagonalGaussianTorchDistribution(mu, sigma)
+        core.agent.bsmp_agent.distribution = dist_eval
         dataset = core.evaluate(**eval_params)
-        core.agent.bsmp_agent.distribution._log_sigma.copy_(tmp)
+        core.agent.bsmp_agent.distribution = dist
+    #core.agent.bsmp_agent.distribution._evaluate = False
 
     J = np.mean(dataset.discounted_return)
     R = np.mean(dataset.reward)
