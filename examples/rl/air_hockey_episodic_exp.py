@@ -1,3 +1,4 @@
+from copy import copy
 import os, sys
 from time import perf_counter
 
