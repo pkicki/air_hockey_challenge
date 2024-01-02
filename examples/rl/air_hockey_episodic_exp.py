@@ -296,8 +296,9 @@ def build_agent_BSMPePPO(env_info, **agent_params):
                  'params': {'lr': agent_params["mu_lr"],
                             'weight_decay': 0.0}}
 
-    #context_builder = IdentityContextBuilder()
     context_builder = None
+    if dist.is_contextual:
+        context_builder = IdentityContextBuilder()
 
     eppo_params = dict(n_epochs_policy=agent_params["n_epochs_policy"],
                        batch_size=agent_params["batch_size"],
