@@ -141,6 +141,7 @@ def experiment(env: str = '7dof-hit',
         core = ChallengeCore(agent, env, action_idx=[0, 1])
 
     best_success = -np.inf
+    best_J = -np.inf
     for epoch in range(n_epochs):
         print("Epoch: ", epoch)
         core.learn(n_steps=n_steps, n_steps_per_fit=n_steps_per_fit,
@@ -170,13 +171,17 @@ def experiment(env: str = '7dof-hit',
                         }
             },
         }, step=epoch)
+        print("BEST J: ", best_J)
         if hasattr(agent, "get_alphas"):
             wandb.log({
             "alphas": {str(i): a for i, a in enumerate(agent.get_alphas())}
             }, step=epoch)
-        if best_success <= success:
-            best_success = success
-            #logger.log_agent(agent)
+        #if best_success <= success:
+        #    best_success = success
+        #    logger.log_agent(agent)
+        if best_J <= J:
+            best_J = J
+            logger.log_agent(agent)
 
     agent = Agent.load(os.path.join(logger.path, f"agent-{seed}.msh"))
 
@@ -297,13 +302,40 @@ def build_agent_BSMPePPO(env_info, **agent_params):
                                 output_shape=(n_dim * n_trainable_q_pts, n_trainable_t_pts))
 
     mu = torch.zeros(n_trainable_pts)
-    #sigma = agent_params["sigma_init"] * torch.ones(n_trainable_pts)
-    sigma = agent_params["sigma_init"]**2 * torch.eye(n_trainable_pts)
     policy = BSMPPolicy(env_info["dt"], n_q_pts, n_dim, n_t_pts, n_pts_fixed_begin, n_pts_fixed_end, robot_constraints)
+    #sigma = agent_params["sigma_init"] * torch.ones(n_trainable_pts)
     #dist = DiagonalGaussianBSMPSigmaDistribution(mu_approximator, log_sigma_approximator)
     #dist = DiagonalGaussianBSMPDistribution(mu_approximator, sigma)
-    #dist = DiagonalGaussianTorchDistribution(mu, sigma)
-    dist = CholeskyGaussianTorchDistribution(mu, sigma)
+    #sigma = agent_params["sigma_init"]**2 * torch.eye(n_trainable_pts)
+    #sigma_q_init = agent_params["sigma_init"] / 10.
+    #sigma_q = sigma_q_init * np.ones((n_trainable_q_pts, n_dim))
+    ##sigma_q[-1] /= 2.
+    #sigma_t_init = agent_params["sigma_init"]
+    #sigma_t = sigma_t_init * np.ones((n_trainable_t_pts))
+    ##sigma_t[0] /= 2.
+    ##sigma_t[-1] /= 2.
+
+    #sigma = torch.tensor(np.concatenate([sigma_q.reshape(-1), sigma_t]), dtype=torch.float32)
+    #sigma = torch.diag(sigma**2)
+    #dist = CholeskyGaussianTorchDistribution(mu, sigma)
+
+    #sigma = torch.tensor([0.0650, 0.0650, 0.0650, 0.0651, 0.0652, 0.0653, 0.0649, 0.0652, 0.0650,
+    #    0.0650, 0.0648, 0.0651, 0.0652, 0.0649, 0.0651, 0.0651, 0.0650, 0.0650,
+    #    0.0652, 0.0650, 0.0650, 0.0650, 0.0650, 0.0650, 0.0651, 0.0651, 0.0650,
+    #    0.0649, 0.0649, 0.0648, 0.0650, 0.0649, 0.0650, 0.0649, 0.0649, 4.9652,
+    #    4.9648, 4.9650, 4.9655, 4.9658, 4.9649, 4.9656, 0.4653, 0.4651, 0.4656,
+    #    0.4658, 0.4654, 0.4655, 0.4654, 0.0650, 0.0649, 0.0651, 0.0650, 0.0650,
+    #    0.0653, 0.0650, 0.1344, 0.0788, 0.0670, 0.0820, 0.0676, 0.0667, 0.0682,
+    #    0.0714, 0.0654, 0.0709])
+    sigma = torch.tensor([0.0237, 0.0236, 0.0238, 0.0238, 0.0238, 0.0240, 0.0238, 0.0237, 0.0237,
+        0.0236, 0.0236, 0.0237, 0.0238, 0.0235, 0.0237, 0.0237, 0.0235, 0.0237,
+        0.0238, 0.0236, 0.0236, 0.0237, 0.0238, 0.0236, 0.0238, 0.0238, 0.0237,
+        0.0236, 0.0236, 0.0236, 0.0238, 0.0237, 0.0238, 0.0236, 0.0237, 1.5886,
+        1.6154, 1.6018, 1.6140, 1.6146, 1.5856, 1.5870, 0.1880, 0.1880, 0.1936,
+        0.1866, 0.1864, 0.1842, 0.1842, 0.0333, 0.0373, 0.0362, 0.0351, 0.0318,
+        0.0335, 0.0335, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000,
+        0.1000, 0.0853, 0.1089])
+    dist = DiagonalGaussianTorchDistribution(mu, sigma)
 
 
     #sigma_optimizer = AdaptiveOptimizer(eps=0.3)
@@ -336,9 +368,10 @@ def compute_metrics(core, eval_params):
     #core.agent.bsmp_agent.distribution._evaluate = True
     with torch.no_grad():
         dist = copy(core.agent.bsmp_agent.distribution)
-        sigma = 1e-8 * torch.eye(dist._mu.shape[0])
-        dist_eval = CholeskyGaussianTorchDistribution(dist._mu, sigma)
-        #dist = DiagonalGaussianTorchDistribution(mu, sigma)
+        #sigma = 1e-8 * torch.eye(dist._mu.shape[0])
+        #dist_eval = CholeskyGaussianTorchDistribution(dist._mu, sigma)
+        sigma = 1e-8 * torch.ones(dist._mu.shape[0])
+        dist_eval = DiagonalGaussianTorchDistribution(dist._mu, sigma)
         core.agent.bsmp_agent.distribution = dist_eval
         dataset = core.evaluate(**eval_params)
         core.agent.bsmp_agent.distribution = dist

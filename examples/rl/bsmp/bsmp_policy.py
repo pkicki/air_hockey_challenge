@@ -60,6 +60,7 @@ class BSMPPolicy(Policy):
             _qdd3='primitive',
             _qd1='primitive',
             _td1='primitive',
+            _traj_no='primitive'
         )
 
     def unpack_context(self, context):
@@ -74,46 +75,64 @@ class BSMPPolicy(Policy):
             puck, puck_dot, q_0, q_d, q_dot_0, q_dot_d, q_ddot_0, q_ddot_d, opponent_mallet = unpack_data_airhockey(torch.tensor(context))
         return q_0[:, None], q_d[:, None], q_dot_0[:, None], q_dot_d[:, None], q_ddot_0[:, None], q_ddot_d[:, None]
 
+    #def compute_trajectory_from_theta(self, theta, context):
+    #    q_0, q_d, q_dot_0, q_dot_d, q_ddot_0, q_ddot_d = self.unpack_context(context)
+    #    trainable_q_cps, trainable_t_cps = self.extract_qt(theta)
+    #    q1, q2, qm2, qm1 = self.compute_boundary_control_points_exp(trainable_t_cps, q_0, q_dot_0, q_ddot_0,
+    #                                                                q_d, q_dot_d, q_ddot_d)
+    #    q_begin = [q_0, q1, q2]
+    #    q_end = [q_d, qm1, qm2]
+    #    q_cps = torch.cat(q_begin[:self._n_pts_fixed_begin] + [q_0 + torch.pi * trainable_q_cps] + q_end[:self._n_pts_fixed_end][::-1], axis=-2)
+    #    #q, q_dot, q_ddot, t, dt, duration = self.compute_trajectory(q_cps.detach().numpy(), trainable_t_cps.detach().numpy())
+    #    #q_cps_ = q_cps.detach().numpy()[0]
+    #    #t_cps_ = trainable_t_cps.detach().numpy()[0]
+    #    #for i in range(self.n_dim):
+    #    #    plt.subplot(1, 8, 1+i)
+    #    #    plt.plot(q_cps_[:, i])
+    #    #plt.subplot(1, 8, 1+self.n_dim)
+    #    #plt.plot(t_cps_)
+    #    ##plt.show()
+    #    #plt.savefig(os.path.join(os.path.dirname(__file__), "..", f"imgs/cps_{self._traj_no}.png"))
+    #    #plt.clf()
+
+    #    q, q_dot, q_ddot, t, dt, duration = self.compute_trajectory(q_cps.to(torch.float32), trainable_t_cps.to(torch.float32), differentiable=True)
+    #    #q_ = q.detach().numpy()[0]
+    #    #q_dot_ = q_dot.detach().numpy()[0]
+    #    #q_ddot_ = q_ddot.detach().numpy()[0]
+    #    #t_ = t.detach().numpy()[0]
+    #    #qdl = self._robot_constraints['q_dot']
+    #    #qddl = self._robot_constraints['q_ddot']
+    #    #for i in range(self.n_dim):
+    #    #    plt.subplot(3, 7, 1+i)
+    #    #    plt.plot(t_, q_[:, i])
+    #    #    plt.subplot(3, 7, 1+i+self.n_dim)
+    #    #    plt.plot(t_, q_dot_[:, i])
+    #    #    plt.plot([t_[0], t_[-1]], [qdl[i], qdl[i]], 'r--')
+    #    #    plt.plot([t_[0], t_[-1]], [-qdl[i], -qdl[i]], 'r--')
+    #    #    plt.subplot(3, 7, 1+i+2*self.n_dim)
+    #    #    plt.plot(t_, q_ddot_[:, i])
+    #    #    plt.plot([t_[0], t_[-1]], [qddl[i], qddl[i]], 'r--')
+    #    #    plt.plot([t_[0], t_[-1]], [-qddl[i], -qddl[i]], 'r--')
+    #    #plt.savefig(os.path.join(os.path.dirname(__file__), "..", f"imgs/traj_{self._traj_no}.png"))
+    #    #plt.clf()
+    #    self._traj_no += 1
+    #    return q, q_dot, q_ddot, t, dt, duration
+
     def compute_trajectory_from_theta(self, theta, context):
         q_0, q_d, q_dot_0, q_dot_d, q_ddot_0, q_ddot_d = self.unpack_context(context)
         trainable_q_cps, trainable_t_cps = self.extract_qt(theta)
+        # hax
+        q_d = trainable_q_cps[:, -1:] + q_0
+        q_dot_d = trainable_q_cps[:, -2:-1]
+        q_ddot_d = trainable_q_cps[:, -3:-2]
+        trainable_q_cps = trainable_q_cps[:, :-3]
         q1, q2, qm2, qm1 = self.compute_boundary_control_points_exp(trainable_t_cps, q_0, q_dot_0, q_ddot_0,
                                                                     q_d, q_dot_d, q_ddot_d)
         q_begin = [q_0, q1, q2]
         q_end = [q_d, qm1, qm2]
-        q_cps = torch.cat(q_begin[:self._n_pts_fixed_begin] + [q_0 + torch.pi * trainable_q_cps] + q_end[:self._n_pts_fixed_end][::-1], axis=-2)
-        #q, q_dot, q_ddot, t, dt, duration = self.compute_trajectory(q_cps.detach().numpy(), trainable_t_cps.detach().numpy())
-        #q_cps_ = q_cps.detach().numpy()[0]
-        #t_cps_ = trainable_t_cps.detach().numpy()[0]
-        #for i in range(self.n_dim):
-        #    plt.subplot(1, 8, 1+i)
-        #    plt.plot(q_cps_[:, i])
-        #plt.subplot(1, 8, 1+self.n_dim)
-        #plt.plot(t_cps_)
-        ##plt.show()
-        #plt.savefig(os.path.join(os.path.dirname(__file__), "..", f"imgs/cps_{self._traj_no}.png"))
-        #plt.clf()
-
+        q_cps = torch.cat(q_begin[:self._n_pts_fixed_begin] + [q_0 + torch.pi * trainable_q_cps] + q_end[::-1], axis=-2)
+        #q_cps = torch.cat(q_begin[:self._n_pts_fixed_begin] + [q_0 + torch.pi * trainable_q_cps] + q_end[:self._n_pts_fixed_end][::-1], axis=-2)
         q, q_dot, q_ddot, t, dt, duration = self.compute_trajectory(q_cps.to(torch.float32), trainable_t_cps.to(torch.float32), differentiable=True)
-        #q_ = q.detach().numpy()[0]
-        #q_dot_ = q_dot.detach().numpy()[0]
-        #q_ddot_ = q_ddot.detach().numpy()[0]
-        #t_ = t.detach().numpy()[0]
-        #qdl = self._robot_constraints['q_dot']
-        #qddl = self._robot_constraints['q_ddot']
-        #for i in range(self.n_dim):
-        #    plt.subplot(3, 7, 1+i)
-        #    plt.plot(t_, q_[:, i])
-        #    plt.subplot(3, 7, 1+i+self.n_dim)
-        #    plt.plot(t_, q_dot_[:, i])
-        #    plt.plot([t_[0], t_[-1]], [qdl[i], qdl[i]], 'r--')
-        #    plt.plot([t_[0], t_[-1]], [-qdl[i], -qdl[i]], 'r--')
-        #    plt.subplot(3, 7, 1+i+2*self.n_dim)
-        #    plt.plot(t_, q_ddot_[:, i])
-        #    plt.plot([t_[0], t_[-1]], [qddl[i], qddl[i]], 'r--')
-        #    plt.plot([t_[0], t_[-1]], [-qddl[i], -qddl[i]], 'r--')
-        #plt.savefig(os.path.join(os.path.dirname(__file__), "..", f"imgs/traj_{self._traj_no}.png"))
-        #plt.clf()
         self._traj_no += 1
         return q, q_dot, q_ddot, t, dt, duration
 
