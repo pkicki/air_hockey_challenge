@@ -86,8 +86,8 @@ class BSMPePPO(ePPO):
 
         # All constraint losses computation organized in a single function
         def compute_constraint_losses(context):
-            #mu = self.distribution.estimate_mu(context)
-            mu = self.distribution._mu
+            mu = self.distribution.estimate_mu(context)
+            #mu = self.distribution._mu
             q, q_dot, q_ddot, t, dt, duration = self.policy.compute_trajectory_from_theta(mu, context)
 
             dt_ = dt[..., None]
@@ -104,7 +104,7 @@ class BSMPePPO(ePPO):
             y_ee_loss_low = limit_loss(self.robot_constraints["y_ee_lb"], dt, ee_pos[..., 1])[..., None]
             y_ee_loss_high = limit_loss(ee_pos[..., 1], dt, self.robot_constraints["y_ee_ub"])[..., None]
             z_ee_loss = equality_loss(ee_pos[..., 2], dt, self.robot_constraints["z_ee"])[..., None]
-            print(z_ee_loss)
+            print(torch.mean(z_ee_loss, axis=0))
             #plt.plot(ee_pos.detach().numpy()[0, :, 2])
             #plt.show()
 
@@ -170,8 +170,10 @@ class BSMPePPO(ePPO):
                 loss.backward()
                 self._optimizer.step()
             self.update_alphas()
-            mu = self.distribution._mu
-            #mu = self.distribution.estimate_mu(context)
+            self._epoch_no += 1
+            #mu = self.distribution._mu
+        with torch.no_grad():
+            mu = self.distribution.estimate_mu(context)
             q, q_dot, q_ddot, t, dt, duration = self.policy.compute_trajectory_from_theta(mu, context)
             q_ = q.detach().numpy()[0]
             q_dot_ = q_dot.detach().numpy()[0]
@@ -184,43 +186,42 @@ class BSMPePPO(ePPO):
             ee_pos, ee_quat = self.robot.compute_forward_kinematics(q_fk, "F_striker_tip")
             ee_pos = ee_pos.reshape((q.shape[0], q.shape[1], 3)).detach().numpy()
             ee_quat = ee_quat.reshape((q.shape[0], q.shape[1], 4)).detach().numpy()
-            self._epoch_no += 1
 
-        plt.subplot(121)
-        plt.plot(ee_pos[0, :, 0], ee_pos[0, :, 1])
-        plt.subplot(122)
-        plt.plot(t_, ee_pos[0, :, 2])
-        plt.savefig(os.path.join(os.path.dirname(__file__), "..", f"imgs/xyz_{self._epoch_no}.png"))
-        plt.clf()
+            plt.subplot(121)
+            plt.plot(ee_pos[0, :, 0], ee_pos[0, :, 1])
+            plt.subplot(122)
+            plt.plot(t_, ee_pos[0, :, 2])
+            plt.savefig(os.path.join(os.path.dirname(__file__), "..", f"imgs/xyz_{self._epoch_no}.png"))
+            plt.clf()
 
-        n_dim = 7
-        for i in range(n_dim):
-            plt.subplot(3, 7, 1+i)
-            plt.plot(t_, q_[:, i])
-            plt.subplot(3, 7, 1+i+n_dim)
-            plt.plot(t_, q_dot_[:, i])
-            plt.plot([t_[0], t_[-1]], [qdl[i], qdl[i]], 'r--')
-            plt.plot([t_[0], t_[-1]], [-qdl[i], -qdl[i]], 'r--')
-            plt.subplot(3, 7, 1+i+2*n_dim)
-            plt.plot(t_, q_ddot_[:, i])
-            plt.plot([t_[0], t_[-1]], [qddl[i], qddl[i]], 'r--')
-            plt.plot([t_[0], t_[-1]], [-qddl[i], -qddl[i]], 'r--')
-        plt.savefig(os.path.join(os.path.dirname(__file__), "..", f"imgs/mean_traj_{self._epoch_no}.png"))
-        plt.clf()
+            n_dim = 7
+            for i in range(n_dim):
+                plt.subplot(3, 7, 1+i)
+                plt.plot(t_, q_[:, i])
+                plt.subplot(3, 7, 1+i+n_dim)
+                plt.plot(t_, q_dot_[:, i])
+                plt.plot([t_[0], t_[-1]], [qdl[i], qdl[i]], 'r--')
+                plt.plot([t_[0], t_[-1]], [-qdl[i], -qdl[i]], 'r--')
+                plt.subplot(3, 7, 1+i+2*n_dim)
+                plt.plot(t_, q_ddot_[:, i])
+                plt.plot([t_[0], t_[-1]], [qddl[i], qddl[i]], 'r--')
+                plt.plot([t_[0], t_[-1]], [-qddl[i], -qddl[i]], 'r--')
+            plt.savefig(os.path.join(os.path.dirname(__file__), "..", f"imgs/mean_traj_{self._epoch_no}.png"))
+            plt.clf()
 
-        #prob_ratios = torch.stack(prob_ratios, dim=0)
-        #prob_ratios = prob_ratios.sort(dim=1)[0]
-        #prob_ratios = prob_ratios.detach().numpy()
-        #for i in range(prob_ratios.shape[1]):
-        #    plt.plot(prob_ratios[:, i])
-        #plt.show()
-        #clipped_prob_ratios = torch.stack(clipped_prob_ratios, dim=0)
-        #clipped_prob_ratios = clipped_prob_ratios.sort(dim=1)[0]
-        #clipped_prob_ratios = clipped_prob_ratios.detach().numpy()
-        #for i in range(clipped_prob_ratios.shape[1]):
-        #    plt.plot(clipped_prob_ratios[:, i])
-        #plt.show()
-        #print("SIGMA: ", self.distribution._chol_sigma)
-        print("SIGMA: ", torch.exp(self.distribution._log_sigma))
-        #print("SIGMA: ", torch.exp(self.distribution._log_sigma_approximator(context_i[:1])))
-        print("ENTROPY: ", torch.mean(self.distribution.entropy(context)))
+            #prob_ratios = torch.stack(prob_ratios, dim=0)
+            #prob_ratios = prob_ratios.sort(dim=1)[0]
+            #prob_ratios = prob_ratios.detach().numpy()
+            #for i in range(prob_ratios.shape[1]):
+            #    plt.plot(prob_ratios[:, i])
+            #plt.show()
+            #clipped_prob_ratios = torch.stack(clipped_prob_ratios, dim=0)
+            #clipped_prob_ratios = clipped_prob_ratios.sort(dim=1)[0]
+            #clipped_prob_ratios = clipped_prob_ratios.detach().numpy()
+            #for i in range(clipped_prob_ratios.shape[1]):
+            #    plt.plot(clipped_prob_ratios[:, i])
+            #plt.show()
+            #print("SIGMA: ", self.distribution._chol_sigma)
+            print("SIGMA: ", torch.exp(self.distribution._log_sigma))
+            #print("SIGMA: ", torch.exp(self.distribution._log_sigma_approximator(context_i[:1])))
+            print("ENTROPY: ", torch.mean(self.distribution.entropy(context)))

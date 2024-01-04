@@ -50,11 +50,11 @@ def experiment(env: str = '7dof-hit',
                n_epochs: int = 100000,
                n_steps: int = None,
                n_steps_per_fit: int = None,
-               n_episodes: int = 4,
-               n_episodes_per_fit: int = 4,
-               n_eval_episodes: int = 4,
+               n_episodes: int = 32,
+               n_episodes_per_fit: int = 32,
+               n_eval_episodes: int = 2,
 
-               batch_size: int = 4,
+               batch_size: int = 32,
                use_cuda: bool = False,
 
                interpolation_order: int = -1,
@@ -83,8 +83,8 @@ def experiment(env: str = '7dof-hit',
         sigma_init=['sigma_init'] if 'sigma_init' in kwargs.keys() else 0.1,
         sigma_eps=['sigma_eps'] if 'sigma_eps' in kwargs.keys() else 1e-2,
         constraint_lr=kwargs['constraint_lr'] if 'constraint_lr' in kwargs.keys() else 1e-2,
-        mu_lr=kwargs['mu_lr'] if 'mu_lr' in kwargs.keys() else 1e-2,
-        n_epochs_policy=kwargs['n_epochs_policy'] if 'n_epochs_policy' in kwargs.keys() else 4,
+        mu_lr=kwargs['mu_lr'] if 'mu_lr' in kwargs.keys() else 5e-4,
+        n_epochs_policy=kwargs['n_epochs_policy'] if 'n_epochs_policy' in kwargs.keys() else 32,
         batch_size=batch_size,
         eps_ppo=kwargs['eps_ppo'] if 'eps_ppo' in kwargs.keys() else 2e-2,
         ent_coeff=kwargs['ent_coeff'] if 'ent_coeff' in kwargs.keys() else 0e-2,
@@ -102,7 +102,7 @@ def experiment(env: str = '7dof-hit',
         TorchUtils.set_default_device('cuda')
 
     #wandb_run = wandb.init(project="air_hockey_challenge", config={}, dir=results_dir, name=name,
-    #           group=f'{env}_{alg}_ePPO_NN_diag', tags=[str(env)])
+    #           group=f'{env}_{alg}_ePPO_NN_diag_fixedsampling', tags=[str(env)])
 
     eval_params = dict(
         n_episodes=n_eval_episodes,
@@ -124,16 +124,13 @@ def experiment(env: str = '7dof-hit',
     agent_params["n_dim"] = env_info_["robot"]["n_joints"]
 
     agent = agent_builder(env_info_, agent_params)
-    #agent_path = os.path.join(os.path.dirname(__file__), "trained_models/ePPO_stillsamepose_nonn_sigma_lr0.03_bs32_constrlr0.01_nep32_neppf32_neppol4_epsppo0.05_sigmainit0.1_ent0.0_seed444/7dof-hit/agent-444.msh")
+    #agent_path = os.path.join(os.path.dirname(__file__), "trained_models/ePPO_stillsamepose_nonn_sigma_lr0.01_bs32_constrlr0.01_nep32_neppf32_neppol4_epsppo0.02_sigmainit0.1_ent0.0_seed444_betapos1em5_betavel1em3_betaacc_1em4/7dof-hit/agent-444.msh")
+    ##agent_path = os.path.join(os.path.dirname(__file__), "trained_models/ePPO_stillsamepose_nonn_sigma_lr0.03_bs32_constrlr0.01_nep32_neppf32_neppol4_epsppo0.05_sigmainit0.1_ent0.0_seed444/7dof-hit/agent-444.msh")
+    ##agent_path = os.path.join(os.path.dirname(__file__), "trained_models/ePPO_stillsamepose_nonn_lr0.03_bs32_constrlr0.01_nep32_neppf32_neppol4_epsppo0.02_sigmainit0.1_ent0.0_seed444/7dof-hit/agent-444.msh")
     #print("Load agent from: ", agent_path)
     #agent = Agent.load(agent_path)
-    #agent = Agent.load("./logs/444/7dof-hit/agent-444.msh")
-    #agent = Agent.load(os.path.join(os.path.dirname(__file__), "logs/444/7dof-hit/agent-444.msh"))
-    #agent = Agent.load(os.path.join(os.path.dirname(__file__), "trained_models/0/7dof-hit/agent-0.msh"))
-    #agent = Agent.load(os.path.join(os.path.dirname(__file__), "trained_models/noee/7dof-hit/agent-0.msh"))
     #agent.bsmp_agent.load_robot()
     #agent.bsmp_agent.policy._traj_no = 0
-    #agent.bsmp_agent.q_log_t_cps_sigma_trainable = -1e2 * np.ones_like(agent.bsmp_agent.q_log_t_cps_sigma_trainable)
 
     if n_envs > 1:
         core = ChallengeCoreVectorized(agent, env, action_idx=[0, 1])
@@ -335,7 +332,8 @@ def build_agent_BSMPePPO(env_info, **agent_params):
         0.1866, 0.1864, 0.1842, 0.1842, 0.0333, 0.0373, 0.0362, 0.0351, 0.0318,
         0.0335, 0.0335, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000,
         0.1000, 0.0853, 0.1089])
-    dist = DiagonalGaussianTorchDistribution(mu, sigma)
+    #dist = DiagonalGaussianTorchDistribution(mu, sigma)
+    dist = DiagonalGaussianBSMPDistribution(mu_approximator, sigma)
 
 
     #sigma_optimizer = AdaptiveOptimizer(eps=0.3)
@@ -360,6 +358,7 @@ def build_agent_BSMPePPO(env_info, **agent_params):
     return agent
 
 def compute_metrics(core, eval_params):
+    print("EVAL")
     #with torch.no_grad():
     #    tmp = core.agent.bsmp_agent.distribution._log_sigma.data.detach().clone()
     #    core.agent.bsmp_agent.distribution._log_sigma.copy_(-1e1 * torch.ones_like(tmp))
@@ -370,8 +369,10 @@ def compute_metrics(core, eval_params):
         dist = copy(core.agent.bsmp_agent.distribution)
         #sigma = 1e-8 * torch.eye(dist._mu.shape[0])
         #dist_eval = CholeskyGaussianTorchDistribution(dist._mu, sigma)
-        sigma = 1e-8 * torch.ones(dist._mu.shape[0])
-        dist_eval = DiagonalGaussianTorchDistribution(dist._mu, sigma)
+        #sigma = 1e-8 * torch.ones(dist._mu.shape[0])
+        #dist_eval = DiagonalGaussianTorchDistribution(dist._mu, sigma)
+        sigma = 1e-8 * torch.ones(dist._log_sigma.shape[0])
+        dist_eval = DiagonalGaussianBSMPDistribution(dist._mu_approximator, sigma)
         core.agent.bsmp_agent.distribution = dist_eval
         dataset = core.evaluate(**eval_params)
         core.agent.bsmp_agent.distribution = dist
