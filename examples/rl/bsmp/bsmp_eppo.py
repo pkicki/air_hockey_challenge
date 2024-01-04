@@ -222,6 +222,6 @@ class BSMPePPO(ePPO):
             #    plt.plot(clipped_prob_ratios[:, i])
             #plt.show()
             #print("SIGMA: ", self.distribution._chol_sigma)
-            print("SIGMA: ", torch.exp(self.distribution._log_sigma))
-            #print("SIGMA: ", torch.exp(self.distribution._log_sigma_approximator(context_i[:1])))
+            #print("SIGMA: ", torch.exp(self.distribution._log_sigma))
+            print("SIGMA: ", torch.exp(self.distribution._log_sigma_approximator(context_i[:1])))
             print("ENTROPY: ", torch.mean(self.distribution.entropy(context)))
