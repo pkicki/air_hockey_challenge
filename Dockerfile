@@ -68,3 +68,9 @@ RUN apt-get update && apt-get -y install xauth tzdata libgl1-mesa-glx libgl1-mes
 RUN git clone https://github.com/NVlabs/storm.git && \
     cd storm && \
     pip install -e .
+
+RUN pip uninstall mushroom-rl && \
+    git clone https://github.com/MushroomRL/mushroom-rl.git && \
+    cd mushroom-rl && \
+    git chechkout ePPO && \
+    pip install --no-use-pep517 -e .[all]
