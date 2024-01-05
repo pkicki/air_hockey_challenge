@@ -82,6 +82,8 @@ class BSMPePPO(ePPO):
         self.constraint_losses = []
 
     def _update(self, Jep, theta, context):
+        if len(theta.shape) == 3:
+            theta = theta[:, 0]
         # Prepare the constrint limits tensors
         q_dot_limits = torch.Tensor(self.robot_constraints['q_dot'])[None, None]
         q_ddot_limits = torch.Tensor(self.robot_constraints['q_ddot'])[None, None]
@@ -128,7 +130,7 @@ class BSMPePPO(ePPO):
 
         Jep = (Jep - J_mean) / (J_std + 1e-8)
 
-        old_dist = self.distribution.log_pdf(theta).detach()
+        old_dist = self.distribution.log_pdf(theta, context).detach()
 
         if self.distribution.is_contextual:
             full_batch = (theta, Jep, old_dist, context)
@@ -164,7 +166,8 @@ class BSMPePPO(ePPO):
 
                 self._optimizer.zero_grad()
                 # ePPO loss
-                prob_ratio = torch.exp(self.distribution.log_pdf(theta_i) - old_dist_i)
+                lp = self.distribution.log_pdf(theta_i, context_i)
+                prob_ratio = torch.exp(lp - old_dist_i)
                 prob_ratios.append(prob_ratio)
                 clipped_ratio = torch.clamp(prob_ratio, 1 - self._eps_ppo(), 1 + self._eps_ppo.get_value())
                 clipped_prob_ratios.append(clipped_ratio)
@@ -229,6 +232,7 @@ class BSMPePPO(ePPO):
             #for i in range(clipped_prob_ratios.shape[1]):
             #    plt.plot(clipped_prob_ratios[:, i])
             #plt.show()
+
             #print("SIGMA: ", self.distribution._chol_sigma)
             #print("SIGMA: ", torch.exp(self.distribution._log_sigma))
             print("SIGMA: ", torch.exp(self.distribution._log_sigma_approximator(context_i[:1])))

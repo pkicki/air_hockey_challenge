@@ -8,7 +8,7 @@ import torch.optim as optim
 import torch.random
 import wandb
 from experiment_launcher import run_experiment, single_experiment
-from examples.rl.bsmp.bsmp_distribution import DiagonalGaussianBSMPDistribution, DiagonalGaussianBSMPSigmaDistribution
+from examples.rl.bsmp.bsmp_distribution import DiagonalGaussianBSMPDistribution, DiagonalGaussianBSMPSigmaDistribution, DiagonalMultiGaussianBSMPSigmaDistribution
 
 from examples.rl.bsmp.bsmp_eppo import BSMPePPO
 from examples.rl.bsmp.bsmp_policy import BSMPPolicy
@@ -281,22 +281,22 @@ def build_agent_BSMPePPO(env_info, **agent_params):
 
     mdp_info = env_info['rl_info']
 
-    #sigma = torch.tensor([0.0650, 0.0650, 0.0650, 0.0651, 0.0652, 0.0653, 0.0649, 0.0652, 0.0650,
-    #    0.0650, 0.0648, 0.0651, 0.0652, 0.0649, 0.0651, 0.0651, 0.0650, 0.0650,
-    #    0.0652, 0.0650, 0.0650, 0.0650, 0.0650, 0.0650, 0.0651, 0.0651, 0.0650,
-    #    0.0649, 0.0649, 0.0648, 0.0650, 0.0649, 0.0650, 0.0649, 0.0649, 4.9652,
-    #    4.9648, 4.9650, 4.9655, 4.9658, 4.9649, 4.9656, 0.4653, 0.4651, 0.4656,
-    #    0.4658, 0.4654, 0.4655, 0.4654, 0.0650, 0.0649, 0.0651, 0.0650, 0.0650,
-    #    0.0653, 0.0650, 0.1344, 0.0788, 0.0670, 0.0820, 0.0676, 0.0667, 0.0682,
-    #    0.0714, 0.0654, 0.0709])
-    sigma = torch.tensor([0.0237, 0.0236, 0.0238, 0.0238, 0.0238, 0.0240, 0.0238, 0.0237, 0.0237,
-        0.0236, 0.0236, 0.0237, 0.0238, 0.0235, 0.0237, 0.0237, 0.0235, 0.0237,
-        0.0238, 0.0236, 0.0236, 0.0237, 0.0238, 0.0236, 0.0238, 0.0238, 0.0237,
-        0.0236, 0.0236, 0.0236, 0.0238, 0.0237, 0.0238, 0.0236, 0.0237, 1.5886,
-        1.6154, 1.6018, 1.6140, 1.6146, 1.5856, 1.5870, 0.1880, 0.1880, 0.1936,
-        0.1866, 0.1864, 0.1842, 0.1842, 0.0333, 0.0373, 0.0362, 0.0351, 0.0318,
-        0.0335, 0.0335, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000,
-        0.1000, 0.0853, 0.1089])
+    sigma = torch.tensor([0.0650, 0.0650, 0.0650, 0.0651, 0.0652, 0.0653, 0.0649, 0.0652, 0.0650,
+        0.0650, 0.0648, 0.0651, 0.0652, 0.0649, 0.0651, 0.0651, 0.0650, 0.0650,
+        0.0652, 0.0650, 0.0650, 0.0650, 0.0650, 0.0650, 0.0651, 0.0651, 0.0650,
+        0.0649, 0.0649, 0.0648, 0.0650, 0.0649, 0.0650, 0.0649, 0.0649, 4.9652,
+        4.9648, 4.9650, 4.9655, 4.9658, 4.9649, 4.9656, 0.4653, 0.4651, 0.4656,
+        0.4658, 0.4654, 0.4655, 0.4654, 0.0650, 0.0649, 0.0651, 0.0650, 0.0650,
+        0.0653, 0.0650, 0.1344, 0.0788, 0.0670, 0.0820, 0.0676, 0.0667, 0.0682,
+        0.0714, 0.0654, 0.0709])
+    #sigma = torch.tensor([0.0237, 0.0236, 0.0238, 0.0238, 0.0238, 0.0240, 0.0238, 0.0237, 0.0237,
+    #    0.0236, 0.0236, 0.0237, 0.0238, 0.0235, 0.0237, 0.0237, 0.0235, 0.0237,
+    #    0.0238, 0.0236, 0.0236, 0.0237, 0.0238, 0.0236, 0.0238, 0.0238, 0.0237,
+    #    0.0236, 0.0236, 0.0236, 0.0238, 0.0237, 0.0238, 0.0236, 0.0237, 1.5886,
+    #    1.6154, 1.6018, 1.6140, 1.6146, 1.5856, 1.5870, 0.1880, 0.1880, 0.1936,
+    #    0.1866, 0.1864, 0.1842, 0.1842, 0.0333, 0.0373, 0.0362, 0.0351, 0.0318,
+    #    0.0335, 0.0335, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000,
+    #    0.1000, 0.0853, 0.1089])
 
     mu_approximator = Regressor(TorchApproximator,
                                 network=ConfigurationTimeNetworkWrapper,
@@ -337,6 +337,9 @@ def build_agent_BSMPePPO(env_info, **agent_params):
     #dist = DiagonalGaussianTorchDistribution(mu, sigma)
     #dist = DiagonalGaussianBSMPDistribution(mu_approximator, sigma)
     dist = DiagonalGaussianBSMPSigmaDistribution(mu_approximator, log_sigma_approximator)
+    #entropy_weights = torch.tensor([1e0, 1e0, 1e0, 1e0, 1e0])
+    #splits = [(n_trainable_q_pts - 3) * n_dim, (n_trainable_q_pts - 2) * n_dim, (n_trainable_q_pts - 1) * n_dim, n_trainable_q_pts * n_dim]
+    #dist = DiagonalMultiGaussianBSMPSigmaDistribution(mu_approximator, log_sigma_approximator, entropy_weights, splits)
 
 
     #sigma_optimizer = AdaptiveOptimizer(eps=0.3)
@@ -361,7 +364,6 @@ def build_agent_BSMPePPO(env_info, **agent_params):
     return agent
 
 def compute_metrics(core, eval_params):
-    print("EVAL")
     #with torch.no_grad():
     #    tmp = core.agent.bsmp_agent.distribution._log_sigma.data.detach().clone()
     #    core.agent.bsmp_agent.distribution._log_sigma.copy_(-1e1 * torch.ones_like(tmp))
