@@ -69,7 +69,7 @@ RUN git clone https://github.com/NVlabs/storm.git && \
     cd storm && \
     pip install -e .
 
-RUN pip uninstall mushroom-rl && \
+RUN pip uninstall -y mushroom-rl && \
     git clone https://github.com/MushroomRL/mushroom-rl.git && \
     cd mushroom-rl && \
     git chechkout ePPO && \
