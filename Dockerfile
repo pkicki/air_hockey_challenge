@@ -41,6 +41,7 @@ RUN pip install -U pip  \
     -f /wheels \
     && rm -rf /wheels
 
+# TODO remove at more serious refactor
 RUN git clone https://github.com/facebookresearch/differentiable-robot-model.git && \
     cd differentiable-robot-model && \
     python setup.py develop
@@ -62,3 +63,8 @@ ENV NVIDIA_DRIVER_CAPABILITIES \
 # libgl1-mesa-glx libgl1-mesa-dri for non-nvidia GPU
 RUN apt-get update && apt-get -y install xauth tzdata libgl1-mesa-glx libgl1-mesa-dri && \
     rm -rf /var/cache/apt/* /var/lib/apt/lists/*
+
+# TODO move up at more serious refactor
+RUN git clone https://github.com/NVlabs/storm.git && \
+    cd storm && \
+    pip install -e .

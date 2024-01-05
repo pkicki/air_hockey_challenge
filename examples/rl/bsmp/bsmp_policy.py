@@ -218,11 +218,11 @@ class BSMPPolicy(Policy):
         tN = self._t_bsp.N
         tdN = self._t_bsp.dN
         if differentiable:
-            qN = torch.Tensor(qN)
-            qdN = torch.Tensor(qdN)
-            qddN = torch.Tensor(qddN)
-            tN = torch.Tensor(tN)
-            tdN = torch.Tensor(tdN)
+            qN = torch.tensor(qN)
+            qdN = torch.tensor(qdN)
+            qddN = torch.tensor(qddN) 
+            tN = torch.tensor(tN)
+            tdN = torch.tensor(tdN)
 
         q = qN @ q_cps
         q_dot_tau = qdN @ q_cps

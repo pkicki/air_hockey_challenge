@@ -9,7 +9,8 @@ from scipy.interpolate import interp1d
 
 from mushroom_rl.algorithms.policy_search import ePPO
 from mushroom_rl.utils.minibatches import minibatch_generator
-from differentiable_robot_model.robot_model import DifferentiableRobotModel
+#from differentiable_robot_model.robot_model import DifferentiableRobotModel
+from storm_kit.differentiable_robot_model import DifferentiableRobotModel
 
 from bsmp.utils import equality_loss, limit_loss
 
@@ -63,7 +64,8 @@ class BSMPePPO(ePPO):
         #return self.policy.reset(initial_state), theta[0]
 
     def load_robot(self):
-        self.robot = DifferentiableRobotModel(urdf_path=self.urdf_path, name="iiwa", device="cpu")
+        self.robot = DifferentiableRobotModel(urdf_path=self.urdf_path, name="iiwa")
+        #self.robot = DifferentiableRobotModel(urdf_path=self.urdf_path, name="iiwa", device="cpu")
 
     def _unpack_qt(self, qt, trainable=False):
         n_q_pts = self._n_trainable_q_pts if trainable else self._n_q_pts
@@ -84,6 +86,18 @@ class BSMPePPO(ePPO):
         q_dot_limits = torch.Tensor(self.robot_constraints['q_dot'])[None, None]
         q_ddot_limits = torch.Tensor(self.robot_constraints['q_ddot'])[None, None]
 
+        def compute_forward_kinematics(q, q_dot):
+            q_ = q.reshape((-1, q.shape[-1]))
+            q_ = torch.cat([q_, torch.zeros((q_.shape[0], 9 - q_.shape[1]))], dim=-1)
+            q_dot_ = q_dot.reshape((-1, q_dot.shape[-1]))
+            q_dot_ = torch.cat([q_dot_, torch.zeros((q_dot_.shape[0], 9 - q_dot_.shape[1]))], dim=-1)
+            ee_pos, ee_rot = self.robot.compute_forward_kinematics(q_, q_dot_, "F_striker_tip")
+            #ee_pos, ee_quat = self.robot.compute_forward_kinematics(q_, "F_striker_tip")
+            ee_pos = ee_pos.reshape((q.shape[0], q.shape[1], 3))
+            ee_rot = ee_rot.reshape((q.shape[0], q.shape[1], 3, 3))
+            #ee_quat = ee_quat.reshape((q.shape[0], q.shape[1], 4))
+            return ee_pos, ee_rot
+
         # All constraint losses computation organized in a single function
         def compute_constraint_losses(context):
             mu = self.distribution.estimate_mu(context)
@@ -94,11 +108,7 @@ class BSMPePPO(ePPO):
             q_dot_loss = limit_loss(torch.abs(q_dot), dt_, q_dot_limits)
             q_ddot_loss = limit_loss(torch.abs(q_ddot), dt_, q_ddot_limits)
 
-            q_ = q.reshape((-1, q.shape[-1]))
-            q_ = torch.cat([q_, torch.zeros((q_.shape[0], 9 - q_.shape[1]))], dim=-1)
-            ee_pos, ee_quat = self.robot.compute_forward_kinematics(q_, "F_striker_tip")
-            ee_pos = ee_pos.reshape((q.shape[0], q.shape[1], 3))
-            ee_quat = ee_quat.reshape((q.shape[0], q.shape[1], 4))
+            ee_pos, ee_rot = compute_forward_kinematics(q, q_dot)
 
             x_ee_loss_low = limit_loss(self.robot_constraints["x_ee_lb"], dt, ee_pos[..., 0])[..., None]
             y_ee_loss_low = limit_loss(self.robot_constraints["y_ee_lb"], dt, ee_pos[..., 1])[..., None]
@@ -181,11 +191,9 @@ class BSMPePPO(ePPO):
             t_ = t.detach().numpy()[0]
             qdl = self.robot_constraints['q_dot']
             qddl = self.robot_constraints['q_ddot']
-            q_fk = q.reshape((-1, q.shape[-1]))
-            q_fk = torch.cat([q_fk, torch.zeros((q_fk.shape[0], 9 - q_fk.shape[1]))], dim=-1)
-            ee_pos, ee_quat = self.robot.compute_forward_kinematics(q_fk, "F_striker_tip")
-            ee_pos = ee_pos.reshape((q.shape[0], q.shape[1], 3)).detach().numpy()
-            ee_quat = ee_quat.reshape((q.shape[0], q.shape[1], 4)).detach().numpy()
+            ee_pos, ee_rot = compute_forward_kinematics(q, q_dot)
+            ee_pos = ee_pos.detach().numpy()
+            ee_rot = ee_rot.detach().numpy()
 
             plt.subplot(121)
             plt.plot(ee_pos[0, :, 0], ee_pos[0, :, 1])
