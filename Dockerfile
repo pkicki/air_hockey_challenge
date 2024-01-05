@@ -72,5 +72,5 @@ RUN git clone https://github.com/NVlabs/storm.git && \
 RUN pip uninstall -y mushroom-rl && \
     git clone https://github.com/MushroomRL/mushroom-rl.git && \
     cd mushroom-rl && \
-    git chechkout ePPO && \
+    git checkout ePPO && \
     pip install --no-use-pep517 -e .[all]
