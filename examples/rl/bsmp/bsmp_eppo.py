@@ -170,7 +170,6 @@ class BSMPePPO(ePPO):
         for epoch in range(self._n_epochs_policy()):
             for minibatch in minibatch_generator(self._batch_size(), *full_batch):
                 self._optimizer.zero_grad()
-                self.value_function_optimizer.zero_grad()
                 theta_i, context_i, Jep_i, old_dist_i = self._unpack(minibatch)
                 #theta_i, context_i, Jep_i, old_dist_i, value_i = self._unpack(minibatch)
 
@@ -198,8 +197,9 @@ class BSMPePPO(ePPO):
                 print("J: ", Jep_i)
                 print("V: ", value_i)
                 loss.backward(retain_graph=True)
-                value_loss.backward()
                 self._optimizer.step()
+                self.value_function_optimizer.zero_grad()
+                value_loss.backward()
                 self.value_function_optimizer.step()
             self.update_alphas()
             self._epoch_no += 1
