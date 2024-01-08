@@ -26,7 +26,7 @@ class BSMPePPO(ePPO):
     Kicki P. et al. 2023.
     """
 
-    def __init__(self, mdp_info, distribution, policy, optimizer, #mu_optimizer, sigma_optimizer,
+    def __init__(self, mdp_info, distribution, policy, optimizer, value_function, value_function_optimizer, #mu_optimizer, sigma_optimizer,
                  robot_constraints, constraint_lr,
                  n_epochs_policy, batch_size, eps_ppo, ent_coeff=0.0, context_builder=None): 
                  #mdp_info, robot_constraints, dt, n_q_cps, n_t_cps, n_pts_fixed_begin, n_pts_fixed_end,
@@ -37,6 +37,9 @@ class BSMPePPO(ePPO):
         self.constraint_lr = constraint_lr
         self.constraint_losses = []
         self.constraint_losses_log = []
+
+        self.value_function = value_function
+        self.value_function_optimizer = value_function_optimizer
 
         self.urdf_path = os.path.join(os.path.dirname(__file__), "iiwa_striker.urdf")
         self.load_robot()
@@ -116,7 +119,7 @@ class BSMPePPO(ePPO):
             y_ee_loss_low = limit_loss(self.robot_constraints["y_ee_lb"], dt, ee_pos[..., 1])[..., None]
             y_ee_loss_high = limit_loss(ee_pos[..., 1], dt, self.robot_constraints["y_ee_ub"])[..., None]
             z_ee_loss = equality_loss(ee_pos[..., 2], dt, self.robot_constraints["z_ee"])[..., None]
-            print(torch.mean(z_ee_loss, axis=0))
+            print("Z LOSS: ", torch.mean(z_ee_loss, axis=0))
             #plt.plot(ee_pos.detach().numpy()[0, :, 2])
             #plt.show()
 
@@ -125,10 +128,14 @@ class BSMPePPO(ePPO):
             return constraint_losses
 
         Jep = torch.tensor(Jep)
-        J_mean = torch.mean(Jep)
-        J_std = torch.std(Jep)
+        #J_mean = torch.mean(Jep)
+        #J_std = torch.std(Jep)
 
-        Jep = (Jep - J_mean) / (J_std + 1e-8)
+        #Jep = (Jep - J_mean) / (J_std + 1e-8)
+
+        with torch.no_grad():
+            value = self.value_function(context)[:, 0]
+            mean_advantage = torch.mean(Jep - value)
 
         old_dist = self.distribution.log_pdf(theta, context).detach()
 
@@ -162,16 +169,21 @@ class BSMPePPO(ePPO):
         clipped_prob_ratios = []
         for epoch in range(self._n_epochs_policy()):
             for minibatch in minibatch_generator(self._batch_size(), *full_batch):
-                theta_i, context_i, Jep_i, old_dist_i = self._unpack(minibatch)
-
                 self._optimizer.zero_grad()
+                self.value_function_optimizer.zero_grad()
+                theta_i, context_i, Jep_i, old_dist_i = self._unpack(minibatch)
+                #theta_i, context_i, Jep_i, old_dist_i, value_i = self._unpack(minibatch)
+
                 # ePPO loss
                 lp = self.distribution.log_pdf(theta_i, context_i)
                 prob_ratio = torch.exp(lp - old_dist_i)
                 prob_ratios.append(prob_ratio)
                 clipped_ratio = torch.clamp(prob_ratio, 1 - self._eps_ppo(), 1 + self._eps_ppo.get_value())
                 clipped_prob_ratios.append(clipped_ratio)
-                loss = -torch.mean(torch.min(prob_ratio * Jep_i, clipped_ratio * Jep_i))
+                value_i = self.value_function(context_i)[:, 0]
+                A = Jep_i - value_i
+                A_unbiased = A - mean_advantage
+                loss = -torch.mean(torch.min(prob_ratio * A_unbiased, clipped_ratio * A_unbiased))
                 loss -= torch.mean(self._ent_coeff() * self.distribution.entropy(context_i))
 
                 # constraint loss
@@ -180,8 +192,15 @@ class BSMPePPO(ePPO):
                 constraint_loss = torch.exp(torch.Tensor(self.alphas))[None] * constraint_losses
                 constraint_loss = torch.sum(constraint_loss, dim=-1)
                 loss += torch.mean(constraint_loss)
-                loss.backward()
+
+                value_loss = torch.mean(A**2)
+                print("VALUE LOSS: ", value_loss)
+                print("J: ", Jep_i)
+                print("V: ", value_i)
+                loss.backward(retain_graph=True)
+                value_loss.backward()
                 self._optimizer.step()
+                self.value_function_optimizer.step()
             self.update_alphas()
             self._epoch_no += 1
             #mu = self.distribution._mu
@@ -200,6 +219,7 @@ class BSMPePPO(ePPO):
 
             plt.subplot(121)
             plt.plot(ee_pos[0, :, 0], ee_pos[0, :, 1])
+            plt.plot(context[0, 0], context[0, 1], 'ro')
             plt.subplot(122)
             plt.plot(t_, ee_pos[0, :, 2])
             plt.savefig(os.path.join(os.path.dirname(__file__), "..", f"imgs/xyz_{self._epoch_no}.png"))

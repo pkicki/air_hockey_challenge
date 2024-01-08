@@ -16,6 +16,7 @@ from examples.rl.bsmp.bspline import BSpline
 from examples.rl.bsmp.bspline_timeoptimal_approximator import BSplineFastApproximatorAirHockeyWrapper
 from examples.rl.bsmp.context_builder import IdentityContextBuilder
 from examples.rl.bsmp.network import ConfigurationTimeNetwork, ConfigurationTimeNetworkWrapper, LogSigmaNetworkWrapper
+from examples.rl.bsmp.value_network import ValueNetwork
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', )))
@@ -84,13 +85,14 @@ def experiment(env: str = '7dof-hit',
         sigma_eps=['sigma_eps'] if 'sigma_eps' in kwargs.keys() else 1e-2,
         constraint_lr=kwargs['constraint_lr'] if 'constraint_lr' in kwargs.keys() else 1e-2,
         mu_lr=kwargs['mu_lr'] if 'mu_lr' in kwargs.keys() else 5e-5,
+        value_lr=kwargs['value_lr'] if 'value_lr' in kwargs.keys() else 5e-4,
         n_epochs_policy=kwargs['n_epochs_policy'] if 'n_epochs_policy' in kwargs.keys() else 32,
         batch_size=batch_size,
-        eps_ppo=kwargs['eps_ppo'] if 'eps_ppo' in kwargs.keys() else 2e-2,
-        ent_coeff=kwargs['ent_coeff'] if 'ent_coeff' in kwargs.keys() else 0e-2,
+        eps_ppo=kwargs['eps_ppo'] if 'eps_ppo' in kwargs.keys() else 5e-2,
+        ent_coeff=kwargs['ent_coeff'] if 'ent_coeff' in kwargs.keys() else 0e-3,
     )
 
-    name = f"""ePPO_stillsamepose_nn_lr{agent_params['mu_lr']}_bs{batch_size}_constrlr{agent_params['constraint_lr']}_
+    name = f"""ePPO_stillrandompose_initsigma01nn_nobigsigma_nn_lr{agent_params['mu_lr']}_valelr{agent_params['value_lr']}_bs{batch_size}_constrlr{agent_params['constraint_lr']}_
                nep{n_episodes}_neppf{n_episodes_per_fit}_neppol{agent_params['n_epochs_policy']}_epsppo{agent_params['eps_ppo']}_
                sigmainit{agent_params['sigma_init']}_ent{agent_params['ent_coeff']}_seed{seed}"""
 
@@ -102,7 +104,7 @@ def experiment(env: str = '7dof-hit',
         TorchUtils.set_default_device('cuda')
 
     #wandb_run = wandb.init(project="air_hockey_challenge", config={}, dir=results_dir, name=name,
-    #           group=f'{env}_{alg}_ePPO_NN_diag_fixedsampling', tags=[str(env)])
+    #           group=f'{env}_{alg}_ePPO_NN_diag_NN_value', tags=[str(env)])
 
     eval_params = dict(
         n_episodes=n_eval_episodes,
@@ -284,11 +286,19 @@ def build_agent_BSMPePPO(env_info, **agent_params):
     sigma = torch.tensor([0.0650, 0.0650, 0.0650, 0.0651, 0.0652, 0.0653, 0.0649, 0.0652, 0.0650,
         0.0650, 0.0648, 0.0651, 0.0652, 0.0649, 0.0651, 0.0651, 0.0650, 0.0650,
         0.0652, 0.0650, 0.0650, 0.0650, 0.0650, 0.0650, 0.0651, 0.0651, 0.0650,
-        0.0649, 0.0649, 0.0648, 0.0650, 0.0649, 0.0650, 0.0649, 0.0649, 4.9652,
-        4.9648, 4.9650, 4.9655, 4.9658, 4.9649, 4.9656, 0.4653, 0.4651, 0.4656,
-        0.4658, 0.4654, 0.4655, 0.4654, 0.0650, 0.0649, 0.0651, 0.0650, 0.0650,
+        0.0649, 0.0649, 0.0648, 0.0650, 0.0649, 0.0650, 0.0649, 0.0649, 0.0650,
+        0.0650, 0.0650, 0.0650, 0.0650, 0.0650, 0.0650, 0.0650, 0.0650, 0.0650,
+        0.0650, 0.0650, 0.0650, 0.0650, 0.0650, 0.0649, 0.0651, 0.0650, 0.0650,
         0.0653, 0.0650, 0.1344, 0.0788, 0.0670, 0.0820, 0.0676, 0.0667, 0.0682,
         0.0714, 0.0654, 0.0709])
+    #sigma = torch.tensor([0.0650, 0.0650, 0.0650, 0.0651, 0.0652, 0.0653, 0.0649, 0.0652, 0.0650,
+    #    0.0650, 0.0648, 0.0651, 0.0652, 0.0649, 0.0651, 0.0651, 0.0650, 0.0650,
+    #    0.0652, 0.0650, 0.0650, 0.0650, 0.0650, 0.0650, 0.0651, 0.0651, 0.0650,
+    #    0.0649, 0.0649, 0.0648, 0.0650, 0.0649, 0.0650, 0.0649, 0.0649, 4.9652,
+    #    4.9648, 4.9650, 4.9655, 4.9658, 4.9649, 4.9656, 0.4653, 0.4651, 0.4656,
+    #    0.4658, 0.4654, 0.4655, 0.4654, 0.0650, 0.0649, 0.0651, 0.0650, 0.0650,
+    #    0.0653, 0.0650, 0.1344, 0.0788, 0.0670, 0.0820, 0.0676, 0.0667, 0.0682,
+    #    0.0714, 0.0654, 0.0709])
     #sigma = torch.tensor([0.0237, 0.0236, 0.0238, 0.0238, 0.0238, 0.0240, 0.0238, 0.0237, 0.0237,
     #    0.0236, 0.0236, 0.0237, 0.0238, 0.0235, 0.0237, 0.0237, 0.0235, 0.0237,
     #    0.0238, 0.0236, 0.0236, 0.0237, 0.0238, 0.0236, 0.0238, 0.0238, 0.0237,
@@ -315,6 +325,8 @@ def build_agent_BSMPePPO(env_info, **agent_params):
                                         },
                                 input_shape=(mdp_info.observation_space.shape[0],),
                                 output_shape=(n_dim * n_trainable_q_pts, n_trainable_t_pts))
+
+    value_function_approximator = ValueNetwork(mdp_info.observation_space)
 
     mu = torch.zeros(n_trainable_pts)
     policy = BSMPPolicy(env_info["dt"], n_q_pts, n_dim, n_t_pts, n_pts_fixed_begin, n_pts_fixed_end, robot_constraints)
@@ -348,6 +360,8 @@ def build_agent_BSMPePPO(env_info, **agent_params):
                  'params': {'lr': agent_params["mu_lr"],
                             'weight_decay': 0.0}}
 
+    value_function_optimizer = optim.Adam(value_function_approximator.parameters(), lr=agent_params["value_lr"])
+
     context_builder = None
     if dist.is_contextual:
         context_builder = IdentityContextBuilder()
@@ -359,7 +373,8 @@ def build_agent_BSMPePPO(env_info, **agent_params):
                        context_builder=context_builder
                        )
 
-    agent = BSMPePPO(mdp_info, dist, policy, optimizer, robot_constraints,
+    agent = BSMPePPO(mdp_info, dist, policy, optimizer, value_function_approximator, value_function_optimizer,
+                     robot_constraints,
                      agent_params["constraint_lr"], **eppo_params)
     return agent
 
