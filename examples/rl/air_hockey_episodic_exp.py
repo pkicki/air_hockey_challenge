@@ -386,18 +386,21 @@ def compute_metrics(core, eval_params):
     #    core.agent.bsmp_agent.distribution._log_sigma.copy_(tmp)
     #core.agent.bsmp_agent.distribution._evaluate = True
     with torch.no_grad():
-        dist = copy(core.agent.bsmp_agent.distribution)
+        #dist = copy(core.agent.bsmp_agent.distribution)
         #sigma = 1e-8 * torch.eye(dist._mu.shape[0])
         #dist_eval = CholeskyGaussianTorchDistribution(dist._mu, sigma)
         #sigma = 1e-8 * torch.ones(dist._mu.shape[0])
         #dist_eval = DiagonalGaussianTorchDistribution(dist._mu, sigma)
-        policy = core.agent.bsmp_agent.policy
-        sigma_shape = policy._n_trainable_q_pts * policy.n_dim + policy._n_trainable_t_pts
-        sigma = 1e-8 * torch.ones(sigma_shape)
-        dist_eval = DiagonalGaussianBSMPDistribution(dist._mu_approximator, sigma)
-        core.agent.bsmp_agent.distribution = dist_eval
+
+        #policy = core.agent.bsmp_agent.policy
+        #sigma_shape = policy._n_trainable_q_pts * policy.n_dim + policy._n_trainable_t_pts
+        #sigma = 1e-8 * torch.ones(sigma_shape)
+        #dist_eval = DiagonalGaussianBSMPDistribution(dist._mu_approximator, sigma)
+        #core.agent.bsmp_agent.distribution = dist_eval
+        core.agent.bsmp_agent.set_deterministic(True)
         dataset = core.evaluate(**eval_params)
-        core.agent.bsmp_agent.distribution = dist
+        core.agent.bsmp_agent.set_deterministic(False)
+        #core.agent.bsmp_agent.distribution = dist
     #core.agent.bsmp_agent.distribution._evaluate = False
 
     J = np.mean(dataset.discounted_return)
