@@ -33,6 +33,7 @@ from bsmp.agent import BSMP
 
 from mushroom_rl.core import Logger, Agent, MultiprocessEnvironment
 from mushroom_rl.utils.torch import TorchUtils
+from mushroom_rl.utils.callbacks import CollectDataset
 from mushroom_rl.approximators import Regressor
 from mushroom_rl.approximators.parametric import TorchApproximator
 from mushroom_rl.rl_utils.optimizers import AdaptiveOptimizer
@@ -118,7 +119,7 @@ def experiment(env: str = '7dof-hit',
         interpolation_order=interpolation_order,
         moving_init=False,
         horizon=100,
-        gamma=1.,
+        gamma=0.9,
     )
 
     env, env_info_ = env_builder(env, n_envs, env_params)
@@ -134,31 +135,42 @@ def experiment(env: str = '7dof-hit',
     #agent.bsmp_agent.load_robot()
     #agent.bsmp_agent.policy._traj_no = 0
 
+    dataset_callback = CollectDataset()
     if n_envs > 1:
-        core = ChallengeCoreVectorized(agent, env, action_idx=[0, 1])
+        core = ChallengeCoreVectorized(agent, env, action_idx=[0, 1], callbacks_fit=[dataset_callback])
     else:
-        core = ChallengeCore(agent, env, action_idx=[0, 1])
+        core = ChallengeCore(agent, env, action_idx=[0, 1], callbacks_fit=[dataset_callback])
 
     best_success = -np.inf
-    best_J = -np.inf
+    best_J_det = -np.inf
+    best_J_sto = -np.inf
     for epoch in range(n_epochs):
         print("Epoch: ", epoch)
-        core.learn(n_steps=n_steps, n_steps_per_fit=n_steps_per_fit,
-                   n_episodes=n_episodes, n_episodes_per_fit=n_episodes_per_fit, quiet=quiet)
+        core.learn(n_episodes=n_episodes, n_episodes_per_fit=n_episodes_per_fit, quiet=quiet)
+        J_sto = np.mean(dataset_callback.get().discounted_return)
+        init_states = dataset_callback.get().get_init_states()
+        context = core.agent.bsmp_agent._context_builder(init_states)
+        V_sto = np.mean(core.agent.bsmp_agent.value_function(context).detach().numpy())
+        E = np.mean(core.agent.bsmp_agent.distribution.entropy(context).detach().numpy())
+        VJ_bias = V_sto - J_sto
+        dataset_callback.clean()
 
         # Evaluate
-        J, R, success, c_avg, c_max = compute_metrics(core, eval_params)
+        J_det, R, success, c_avg, c_max = compute_metrics(core, eval_params)
 
         if "logger_callback" in kwargs.keys():
-            kwargs["logger_callback"](J, R, success, c_avg, c_max)
+            kwargs["logger_callback"](J_det, J_sto, V_sto, R, E, success, c_avg, c_max)
 
         # Write logging
-        logger.log_numpy(J=J, R=R, success=success, c_avg=np.mean(np.concatenate(list(c_avg.values()))),
+        logger.log_numpy(J_det=J_det, J_sto=J_sto, V_sto=V_sto, VJ_bias=VJ_bias, R=R, E=E,
+                         success=success, c_avg=np.mean(np.concatenate(list(c_avg.values()))),
                          c_max=np.max(np.concatenate(list(c_max.values()))))
-        logger.epoch_info(epoch, J=J, R=R, success=success, c_avg=np.mean(np.concatenate(list(c_avg.values()))),
+        logger.epoch_info(epoch, J_det=J_det, V_sto=V_sto, VJ_bias=VJ_bias, R=R, E=E,
+                          success=success, c_avg=np.mean(np.concatenate(list(c_avg.values()))),
                           c_max=np.max(np.concatenate(list(c_max.values()))))
         wandb.log({
-            "Reward": {"J": J, "R": R, "success": success},
+            "Reward": {"J_det": J_det, "J_sto": J_sto, "V_sto": V_sto, "VJ_bias": VJ_bias, "R": R, "success": success},
+            "Entropy": E,
             "Constraint": {
                 "max": {"pos": np.max(c_max['joint_pos_constr']),
                         "vel": np.max(c_max['joint_vel_constr']),
@@ -170,7 +182,8 @@ def experiment(env: str = '7dof-hit',
                         }
             },
         }, step=epoch)
-        print("BEST J: ", best_J)
+        logger.info(f"BEST J_det: {best_J_det}")
+        logger.info(f"BEST J_sto: {best_J_sto}")
         if hasattr(agent, "get_alphas"):
             wandb.log({
             "alphas": {str(i): a for i, a in enumerate(agent.get_alphas())}
@@ -178,19 +191,24 @@ def experiment(env: str = '7dof-hit',
         #if best_success <= success:
         #    best_success = success
         #    logger.log_agent(agent)
-        if best_J <= J:
-            best_J = J
-            logger.log_agent(agent)
 
-    agent = Agent.load(os.path.join(logger.path, f"agent-{seed}.msh"))
+        if best_J_det <= J_det:
+            best_J_det = J_det
+            logger.log_agent(agent, epoch=epoch)
 
-    core = ChallengeCore(agent, env, action_idx=[0, 1])
+        if best_J_sto <= J_sto:
+            best_J_sto = J_sto
+            logger.log_agent(agent, epoch=epoch)
 
-    eval_params["n_episodes"] = 20
-    J, R, best_success, c_avg, c_max = compute_metrics(core, eval_params)
-    wandb.log(dict(J=J, R=R, best_success=best_success, c_avg=np.mean(np.concatenate(list(c_avg.values()))),
-                   c_max=np.max(np.concatenate(list(c_max.values())))))
-    print("Best Success", best_success)
+    #agent = Agent.load(os.path.join(logger.path, f"agent-{seed}.msh"))
+
+    #core = ChallengeCore(agent, env, action_idx=[0, 1])
+
+    #eval_params["n_episodes"] = 20
+    #J, R, best_success, c_avg, c_max = compute_metrics(core, eval_params)
+    #wandb.log(dict(J=J, R=R, best_success=best_success, c_avg=np.mean(np.concatenate(list(c_avg.values()))),
+    #               c_max=np.max(np.concatenate(list(c_max.values())))))
+    #print("Best Success", best_success)
     wandb_run.finish()
 
 
@@ -379,32 +397,13 @@ def build_agent_BSMPePPO(env_info, **agent_params):
     return agent
 
 def compute_metrics(core, eval_params):
-    #with torch.no_grad():
-    #    tmp = core.agent.bsmp_agent.distribution._log_sigma.data.detach().clone()
-    #    core.agent.bsmp_agent.distribution._log_sigma.copy_(-1e1 * torch.ones_like(tmp))
-    #    dataset = core.evaluate(**eval_params)
-    #    core.agent.bsmp_agent.distribution._log_sigma.copy_(tmp)
-    #core.agent.bsmp_agent.distribution._evaluate = True
     with torch.no_grad():
-        #dist = copy(core.agent.bsmp_agent.distribution)
-        #sigma = 1e-8 * torch.eye(dist._mu.shape[0])
-        #dist_eval = CholeskyGaussianTorchDistribution(dist._mu, sigma)
-        #sigma = 1e-8 * torch.ones(dist._mu.shape[0])
-        #dist_eval = DiagonalGaussianTorchDistribution(dist._mu, sigma)
-
-        #policy = core.agent.bsmp_agent.policy
-        #sigma_shape = policy._n_trainable_q_pts * policy.n_dim + policy._n_trainable_t_pts
-        #sigma = 1e-8 * torch.ones(sigma_shape)
-        #dist_eval = DiagonalGaussianBSMPDistribution(dist._mu_approximator, sigma)
-        #core.agent.bsmp_agent.distribution = dist_eval
         core.agent.bsmp_agent.set_deterministic(True)
         dataset = core.evaluate(**eval_params)
         core.agent.bsmp_agent.set_deterministic(False)
-        #core.agent.bsmp_agent.distribution = dist
-    #core.agent.bsmp_agent.distribution._evaluate = False
 
     J = np.mean(dataset.discounted_return)
-    R = np.mean(dataset.reward)
+    R = np.mean(dataset.undiscounted_return)
 
     eps_length = dataset.episodes_length
     success = 0

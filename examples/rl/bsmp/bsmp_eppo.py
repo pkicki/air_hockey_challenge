@@ -257,5 +257,5 @@ class BSMPePPO(ePPO):
             #print("SIGMA: ", torch.exp(self.distribution._log_sigma))
             print("SIGMA: ", torch.exp(self.distribution._log_sigma_approximator(context_i[:1])))
             print("ENTROPY: ", torch.mean(self.distribution.entropy(context)))
-            print("VALUE NETWORK SCALE: ", torch.exp(self.value_function.log_scale))
-            print("VALUE NETWORK BIAS: ", self.value_function.bias)
+            #print("VALUE NETWORK SCALE: ", torch.exp(self.value_function.log_scale))
+            #print("VALUE NETWORK BIAS: ", self.value_function.bias)
