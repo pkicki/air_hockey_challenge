@@ -153,6 +153,14 @@ def experiment(env: str = '7dof-hit',
         V_sto = np.mean(core.agent.bsmp_agent.value_function(context).detach().numpy())
         E = np.mean(core.agent.bsmp_agent.distribution.entropy(context).detach().numpy())
         VJ_bias = V_sto - J_sto
+        constraints_violation_sto = core.agent.bsmp_agent.compute_constraint_losses(torch.cat(dataset_callback.get().theta_list, axis=0), context).detach().numpy()
+        constraints_violation_sto_mean = np.mean(constraints_violation_sto, axis=0)
+        constraints_violation_sto_max = np.max(constraints_violation_sto, axis=0)
+        mu = core.agent.bsmp_agent.distribution.estimate_mu(context)
+        #mu = self.distribution._mu
+        constraints_violation_det = core.agent.bsmp_agent.compute_constraint_losses(mu, context).detach().numpy()
+        constraints_violation_det_mean = np.mean(constraints_violation_det, axis=0)
+        constraints_violation_det_max = np.max(constraints_violation_det, axis=0)
         dataset_callback.clean()
 
         # Evaluate
@@ -169,24 +177,28 @@ def experiment(env: str = '7dof-hit',
                           success=success, c_avg=np.mean(np.concatenate(list(c_avg.values()))),
                           c_max=np.max(np.concatenate(list(c_max.values()))))
         wandb.log({
-            "Reward": {"J_det": J_det, "J_sto": J_sto, "V_sto": V_sto, "VJ_bias": VJ_bias, "R": R, "success": success},
-            "Entropy": E,
-            "Constraint": {
-                "max": {"pos": np.max(c_max['joint_pos_constr']),
-                        "vel": np.max(c_max['joint_vel_constr']),
-                        "ee": np.max(c_max['ee_constr']),
-                        },
-                "avg": {"pos": np.mean(c_avg['joint_pos_constr']),
-                        "vel": np.mean(c_avg['joint_vel_constr']),
-                        "ee": np.mean(c_avg['ee_constr']),
-                        }
-            },
+            "Reward/": {"J_det": J_det, "J_sto": J_sto, "V_sto": V_sto, "VJ_bias": VJ_bias, "R": R, "success": success},
+            "Entropy/": E,
+            "Constraints_sto/": {"avg/": {str(i): a for i, a in enumerate(constraints_violation_sto_mean)},
+                                 "max/": {str(i): a for i, a in enumerate(constraints_violation_sto_max)}},
+            "Constraints_det/": {"avg/": {str(i): a for i, a in enumerate(constraints_violation_det_mean)},
+                                 "max/": {str(i): a for i, a in enumerate(constraints_violation_det_max)}},
+            # "Constraint": {
+            #     "max": {"pos": np.max(c_max['joint_pos_constr']),
+            #             "vel": np.max(c_max['joint_vel_constr']),
+            #             "ee": np.max(c_max['ee_constr']),
+            #             },
+            #     "avg": {"pos": np.mean(c_avg['joint_pos_constr']),
+            #             "vel": np.mean(c_avg['joint_vel_constr']),
+            #             "ee": np.mean(c_avg['ee_constr']),
+            #             }
+            #},
         }, step=epoch)
         logger.info(f"BEST J_det: {best_J_det}")
         logger.info(f"BEST J_sto: {best_J_sto}")
         if hasattr(agent, "get_alphas"):
             wandb.log({
-            "alphas": {str(i): a for i, a in enumerate(agent.get_alphas())}
+            "alphas/": {str(i): a for i, a in enumerate(agent.get_alphas())}
             }, step=epoch)
         #if best_success <= success:
         #    best_success = success

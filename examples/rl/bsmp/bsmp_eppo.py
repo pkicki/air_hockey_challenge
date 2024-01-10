@@ -84,48 +84,47 @@ class BSMPePPO(ePPO):
         self.constraint_losses_log = constraint_losses
         self.constraint_losses = []
 
-    def _update(self, Jep, theta, context):
-        if len(theta.shape) == 3:
-            theta = theta[:, 0]
+    def compute_forward_kinematics(self, q, q_dot):
+        q_ = q.reshape((-1, q.shape[-1]))
+        q_ = torch.cat([q_, torch.zeros((q_.shape[0], 9 - q_.shape[1]))], dim=-1)
+        q_dot_ = q_dot.reshape((-1, q_dot.shape[-1]))
+        q_dot_ = torch.cat([q_dot_, torch.zeros((q_dot_.shape[0], 9 - q_dot_.shape[1]))], dim=-1)
+        ee_pos, ee_rot = self.robot.compute_forward_kinematics(q_, q_dot_, "F_striker_tip")
+        #ee_pos, ee_quat = self.robot.compute_forward_kinematics(q_, "F_striker_tip")
+        ee_pos = ee_pos.reshape((q.shape[0], q.shape[1], 3))
+        ee_rot = ee_rot.reshape((q.shape[0], q.shape[1], 3, 3))
+        #ee_quat = ee_quat.reshape((q.shape[0], q.shape[1], 4))
+        return ee_pos, ee_rot
+
+    # All constraint losses computation organized in a single function
+    def compute_constraint_losses(self, theta, context):
+        q, q_dot, q_ddot, t, dt, duration = self.policy.compute_trajectory_from_theta(theta, context)
+
+        dt_ = dt[..., None]
         # Prepare the constrint limits tensors
         q_dot_limits = torch.Tensor(self.robot_constraints['q_dot'])[None, None]
         q_ddot_limits = torch.Tensor(self.robot_constraints['q_ddot'])[None, None]
 
-        def compute_forward_kinematics(q, q_dot):
-            q_ = q.reshape((-1, q.shape[-1]))
-            q_ = torch.cat([q_, torch.zeros((q_.shape[0], 9 - q_.shape[1]))], dim=-1)
-            q_dot_ = q_dot.reshape((-1, q_dot.shape[-1]))
-            q_dot_ = torch.cat([q_dot_, torch.zeros((q_dot_.shape[0], 9 - q_dot_.shape[1]))], dim=-1)
-            ee_pos, ee_rot = self.robot.compute_forward_kinematics(q_, q_dot_, "F_striker_tip")
-            #ee_pos, ee_quat = self.robot.compute_forward_kinematics(q_, "F_striker_tip")
-            ee_pos = ee_pos.reshape((q.shape[0], q.shape[1], 3))
-            ee_rot = ee_rot.reshape((q.shape[0], q.shape[1], 3, 3))
-            #ee_quat = ee_quat.reshape((q.shape[0], q.shape[1], 4))
-            return ee_pos, ee_rot
+        q_dot_loss = limit_loss(torch.abs(q_dot), dt_, q_dot_limits)
+        q_ddot_loss = limit_loss(torch.abs(q_ddot), dt_, q_ddot_limits)
 
-        # All constraint losses computation organized in a single function
-        def compute_constraint_losses(context):
-            mu = self.distribution.estimate_mu(context)
-            #mu = self.distribution._mu
-            q, q_dot, q_ddot, t, dt, duration = self.policy.compute_trajectory_from_theta(mu, context)
+        ee_pos, ee_rot = self.compute_forward_kinematics(q, q_dot)
 
-            dt_ = dt[..., None]
-            q_dot_loss = limit_loss(torch.abs(q_dot), dt_, q_dot_limits)
-            q_ddot_loss = limit_loss(torch.abs(q_ddot), dt_, q_ddot_limits)
+        x_ee_loss_low = limit_loss(self.robot_constraints["x_ee_lb"], dt, ee_pos[..., 0])[..., None]
+        y_ee_loss_low = limit_loss(self.robot_constraints["y_ee_lb"], dt, ee_pos[..., 1])[..., None]
+        y_ee_loss_high = limit_loss(ee_pos[..., 1], dt, self.robot_constraints["y_ee_ub"])[..., None]
+        z_ee_loss = equality_loss(ee_pos[..., 2], dt, self.robot_constraints["z_ee"])[..., None]
+        print("Z LOSS: ", torch.mean(z_ee_loss, axis=0))
+        #plt.plot(ee_pos.detach().numpy()[0, :, 2])
+        #plt.show()
 
-            ee_pos, ee_rot = compute_forward_kinematics(q, q_dot)
+        constraint_losses = torch.cat([q_dot_loss, q_ddot_loss, x_ee_loss_low, y_ee_loss_low,
+                                        y_ee_loss_high, z_ee_loss], dim=-1)
+        return constraint_losses
 
-            x_ee_loss_low = limit_loss(self.robot_constraints["x_ee_lb"], dt, ee_pos[..., 0])[..., None]
-            y_ee_loss_low = limit_loss(self.robot_constraints["y_ee_lb"], dt, ee_pos[..., 1])[..., None]
-            y_ee_loss_high = limit_loss(ee_pos[..., 1], dt, self.robot_constraints["y_ee_ub"])[..., None]
-            z_ee_loss = equality_loss(ee_pos[..., 2], dt, self.robot_constraints["z_ee"])[..., None]
-            print("Z LOSS: ", torch.mean(z_ee_loss, axis=0))
-            #plt.plot(ee_pos.detach().numpy()[0, :, 2])
-            #plt.show()
-
-            constraint_losses = torch.cat([q_dot_loss, q_ddot_loss, x_ee_loss_low, y_ee_loss_low,
-                                           y_ee_loss_high, z_ee_loss], dim=-1)
-            return constraint_losses
+    def _update(self, Jep, theta, context):
+        if len(theta.shape) == 3:
+            theta = theta[:, 0]
 
         Jep = torch.tensor(Jep)
         #J_mean = torch.mean(Jep)
@@ -186,7 +185,9 @@ class BSMPePPO(ePPO):
                 loss -= torch.mean(self._ent_coeff() * self.distribution.entropy(context_i))
 
                 # constraint loss
-                constraint_losses = compute_constraint_losses(context_i)
+                mu = self.distribution.estimate_mu(context_i)
+                #mu = self.distribution._mu
+                constraint_losses = self.compute_constraint_losses(mu, context_i)
                 self.constraint_losses.append(constraint_losses)
                 constraint_loss = torch.exp(torch.Tensor(self.alphas))[None] * constraint_losses
                 constraint_loss = torch.sum(constraint_loss, dim=-1)
@@ -213,7 +214,7 @@ class BSMPePPO(ePPO):
             t_ = t.detach().numpy()[0]
             qdl = self.robot_constraints['q_dot']
             qddl = self.robot_constraints['q_ddot']
-            ee_pos, ee_rot = compute_forward_kinematics(q, q_dot)
+            ee_pos, ee_rot = self.compute_forward_kinematics(q, q_dot)
             ee_pos = ee_pos.detach().numpy()
             ee_rot = ee_rot.detach().numpy()
 
