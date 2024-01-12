@@ -28,12 +28,12 @@ class BSMPePPO(ePPO):
 
     def __init__(self, mdp_info, distribution, policy, optimizer, value_function, value_function_optimizer, #mu_optimizer, sigma_optimizer,
                  robot_constraints, constraint_lr,
-                 n_epochs_policy, batch_size, eps_ppo, ent_coeff=0.0, context_builder=None): 
+                 n_epochs_policy, batch_size, eps_ppo, target_entropy, entropy_lr, initial_entropy_bonus, ent_coeff=0.0, context_builder=None): 
                  #mdp_info, robot_constraints, dt, n_q_cps, n_t_cps, n_pts_fixed_begin, n_pts_fixed_end,
                  #n_dim, sigma_init, sigma_eps, mu_lr, constraint_lr, **kwargs):
         self.robot_constraints = robot_constraints
         self.alphas = np.array([0.] * 18)
-        self.violation_limits = np.array([1e-3] * 7 + [1e-4] * 7 + [1e-5] * 4)
+        self.violation_limits = np.array([1e-3] * 7 + [1e-4] * 7 + [5e-6] * 4)
         self.constraint_lr = constraint_lr
         self.constraint_losses = []
         self.constraint_losses_log = []
@@ -47,6 +47,10 @@ class BSMPePPO(ePPO):
 
         super().__init__(mdp_info, distribution, policy, optimizer, n_epochs_policy,
                          batch_size, eps_ppo, ent_coeff, context_builder)
+        
+        self._log_entropy_bonus = torch.tensor(np.log(initial_entropy_bonus), dtype=torch.float32, requires_grad=True)
+        self._entropy_optimizer = torch.optim.Adam([self._log_entropy_bonus], lr=entropy_lr)
+        self._target_entropy = target_entropy
 
         self._add_save_attr(
             alphas='numpy',
@@ -55,10 +59,15 @@ class BSMPePPO(ePPO):
             sigma_optimizer='torch',
             mu_approximator='mushroom',
             mu_optimizer='torch',
+            value_function='torch',
+            value_function_optimizer='torch',
             robot_constraints='pickle',
             urdf_path='primitive',
             constraint_losses='pickle',
             constraint_losses_log='pickle',
+            _log_entropy_bonus='torch',
+            _entropy_optimizer='torch',
+            _target_entropy='primitive',
         )
 
     def episode_start(self, initial_state, episode_info):
@@ -83,6 +92,12 @@ class BSMPePPO(ePPO):
         self.alphas += alphas_update
         self.constraint_losses_log = constraint_losses
         self.constraint_losses = []
+
+    def update_entropy_bonus(self, log_prob):
+        entropy_loss = - (self._log_entropy_bonus.exp() * (log_prob + self._target_entropy)).mean()
+        self._entropy_optimizer.zero_grad()
+        entropy_loss.backward()
+        self._entropy_optimizer.step()
 
     def compute_forward_kinematics(self, q, q_dot):
         q_ = q.reshape((-1, q.shape[-1]))
@@ -114,7 +129,7 @@ class BSMPePPO(ePPO):
         y_ee_loss_low = limit_loss(self.robot_constraints["y_ee_lb"], dt, ee_pos[..., 1])[..., None]
         y_ee_loss_high = limit_loss(ee_pos[..., 1], dt, self.robot_constraints["y_ee_ub"])[..., None]
         z_ee_loss = equality_loss(ee_pos[..., 2], dt, self.robot_constraints["z_ee"])[..., None]
-        print("Z LOSS: ", torch.mean(z_ee_loss, axis=0))
+        #print("Z LOSS: ", torch.mean(z_ee_loss, axis=0))
         #plt.plot(ee_pos.detach().numpy()[0, :, 2])
         #plt.show()
 
@@ -182,7 +197,8 @@ class BSMPePPO(ePPO):
                 A = Jep_i - value_i
                 A_unbiased = A - mean_advantage
                 loss = -torch.mean(torch.min(prob_ratio * A_unbiased, clipped_ratio * A_unbiased))
-                loss -= torch.mean(self._ent_coeff() * self.distribution.entropy(context_i))
+                #loss -= torch.mean(self._ent_coeff() * self.distribution.entropy(context_i))
+                loss -= torch.mean(self._log_entropy_bonus.exp() * self.distribution.entropy(context_i))
 
                 # constraint loss
                 mu = self.distribution.estimate_mu(context_i)
@@ -194,15 +210,16 @@ class BSMPePPO(ePPO):
                 loss += torch.mean(constraint_loss)
 
                 value_loss = torch.mean(A**2)
-                print("VALUE LOSS: ", value_loss)
-                print("J: ", Jep_i)
-                print("V: ", value_i)
+                #print("VALUE LOSS: ", value_loss)
+                #print("J: ", Jep_i)
+                #print("V: ", value_i)
                 loss.backward(retain_graph=True)
                 self._optimizer.step()
                 self.value_function_optimizer.zero_grad()
                 value_loss.backward()
                 self.value_function_optimizer.step()
             self.update_alphas()
+            self.update_entropy_bonus(self.distribution.log_pdf(theta, context))
             self._epoch_no += 1
             #mu = self.distribution._mu
         with torch.no_grad():
@@ -218,28 +235,28 @@ class BSMPePPO(ePPO):
             ee_pos = ee_pos.detach().numpy()
             ee_rot = ee_rot.detach().numpy()
 
-            plt.subplot(121)
-            plt.plot(ee_pos[0, :, 0], ee_pos[0, :, 1])
-            plt.plot(context[0, 0], context[0, 1], 'ro')
-            plt.subplot(122)
-            plt.plot(t_, ee_pos[0, :, 2])
-            plt.savefig(os.path.join(os.path.dirname(__file__), "..", f"imgs/xyz_{self._epoch_no}.png"))
-            plt.clf()
+            #plt.subplot(121)
+            #plt.plot(ee_pos[0, :, 0], ee_pos[0, :, 1])
+            #plt.plot(context[0, 0], context[0, 1], 'ro')
+            #plt.subplot(122)
+            #plt.plot(t_, ee_pos[0, :, 2])
+            #plt.savefig(os.path.join(os.path.dirname(__file__), "..", f"imgs/xyz_{self._epoch_no}.png"))
+            #plt.clf()
 
-            n_dim = 7
-            for i in range(n_dim):
-                plt.subplot(3, 7, 1+i)
-                plt.plot(t_, q_[:, i])
-                plt.subplot(3, 7, 1+i+n_dim)
-                plt.plot(t_, q_dot_[:, i])
-                plt.plot([t_[0], t_[-1]], [qdl[i], qdl[i]], 'r--')
-                plt.plot([t_[0], t_[-1]], [-qdl[i], -qdl[i]], 'r--')
-                plt.subplot(3, 7, 1+i+2*n_dim)
-                plt.plot(t_, q_ddot_[:, i])
-                plt.plot([t_[0], t_[-1]], [qddl[i], qddl[i]], 'r--')
-                plt.plot([t_[0], t_[-1]], [-qddl[i], -qddl[i]], 'r--')
-            plt.savefig(os.path.join(os.path.dirname(__file__), "..", f"imgs/mean_traj_{self._epoch_no}.png"))
-            plt.clf()
+            #n_dim = 7
+            #for i in range(n_dim):
+            #    plt.subplot(3, 7, 1+i)
+            #    plt.plot(t_, q_[:, i])
+            #    plt.subplot(3, 7, 1+i+n_dim)
+            #    plt.plot(t_, q_dot_[:, i])
+            #    plt.plot([t_[0], t_[-1]], [qdl[i], qdl[i]], 'r--')
+            #    plt.plot([t_[0], t_[-1]], [-qdl[i], -qdl[i]], 'r--')
+            #    plt.subplot(3, 7, 1+i+2*n_dim)
+            #    plt.plot(t_, q_ddot_[:, i])
+            #    plt.plot([t_[0], t_[-1]], [qddl[i], qddl[i]], 'r--')
+            #    plt.plot([t_[0], t_[-1]], [-qddl[i], -qddl[i]], 'r--')
+            #plt.savefig(os.path.join(os.path.dirname(__file__), "..", f"imgs/mean_traj_{self._epoch_no}.png"))
+            #plt.clf()
 
             #prob_ratios = torch.stack(prob_ratios, dim=0)
             #prob_ratios = prob_ratios.sort(dim=1)[0]
@@ -256,7 +273,7 @@ class BSMPePPO(ePPO):
 
             #print("SIGMA: ", self.distribution._chol_sigma)
             #print("SIGMA: ", torch.exp(self.distribution._log_sigma))
-            print("SIGMA: ", torch.exp(self.distribution._log_sigma_approximator(context_i[:1])))
-            print("ENTROPY: ", torch.mean(self.distribution.entropy(context)))
+            #print("SIGMA: ", torch.exp(self.distribution._log_sigma_approximator(context_i[:1])))
+            #print("ENTROPY: ", torch.mean(self.distribution.entropy(context)))
             #print("VALUE NETWORK SCALE: ", torch.exp(self.value_function.log_scale))
             #print("VALUE NETWORK BIAS: ", self.value_function.bias)

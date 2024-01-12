@@ -20,6 +20,7 @@ from examples.rl.bsmp.value_network import ValueNetwork
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', )))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__))))
 
 from air_hockey_challenge.framework.air_hockey_challenge_wrapper import AirHockeyChallengeWrapper
 from air_hockey_challenge.framework.challenge_core import ChallengeCore
@@ -91,6 +92,9 @@ def experiment(env: str = '7dof-hit',
         batch_size=batch_size,
         eps_ppo=kwargs['eps_ppo'] if 'eps_ppo' in kwargs.keys() else 5e-2,
         ent_coeff=kwargs['ent_coeff'] if 'ent_coeff' in kwargs.keys() else 0e-3,
+        target_entropy=kwargs["target_entropy"] if 'target_entropy' in kwargs.keys() else -66.,
+        entropy_lr=kwargs["entropy_lr"] if 'entropy_lr' in kwargs.keys() else 1e-3,
+        initial_entropy_bonus=kwargs["initial_entropy_bonus"] if 'initial_entropy_bonus' in kwargs.keys() else 0.,
     )
 
     name = f"""ePPO_stillrandompose_initsigma02nn_nobigsigma_nn_lr{agent_params['mu_lr']}_valuelr{agent_params['value_lr']}_bs{batch_size}_constrlr{agent_params['constraint_lr']}_nep{n_episodes}_neppf{n_episodes_per_fit}_neppol{agent_params['n_epochs_policy']}_epsppo{agent_params['eps_ppo']}_sigmainit{agent_params['sigma_init']}_ent{agent_params['ent_coeff']}_seed{seed}"""
@@ -405,7 +409,10 @@ def build_agent_BSMPePPO(env_info, **agent_params):
     eppo_params = dict(n_epochs_policy=agent_params["n_epochs_policy"],
                        batch_size=agent_params["batch_size"],
                        eps_ppo=agent_params["sigma_eps"],
-                       ent_coeff=agent_params["ent_coeff"],
+                       target_entropy=agent_params["target_entropy"],
+                       entropy_lr=agent_params["entropy_lr"],
+                       initial_entropy_bonus=agent_params["initial_entropy_bonus"],
+                       #ent_coeff=agent_params["ent_coeff"],
                        context_builder=context_builder
                        )
 
