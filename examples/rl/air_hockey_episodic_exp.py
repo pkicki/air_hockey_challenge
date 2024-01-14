@@ -79,7 +79,7 @@ def experiment(env: str = '7dof-hit',
         alg=alg,
         checkpoint=checkpoint,
         seed=seed,
-        n_q_cps=kwargs['n_q_cps'] if 'n_q_cps' in kwargs.keys() else 11,
+        n_q_cps=kwargs['n_q_cps'] if 'n_q_cps' in kwargs.keys() else 15,
         n_t_cps=kwargs['n_t_cps'] if 'n_t_cps' in kwargs.keys() else 10,
         n_pts_fixed_begin=3,
         n_pts_fixed_end=0,
@@ -90,14 +90,14 @@ def experiment(env: str = '7dof-hit',
         value_lr=kwargs['value_lr'] if 'value_lr' in kwargs.keys() else 5e-4,
         n_epochs_policy=kwargs['n_epochs_policy'] if 'n_epochs_policy' in kwargs.keys() else 32,
         batch_size=batch_size,
-        eps_ppo=kwargs['eps_ppo'] if 'eps_ppo' in kwargs.keys() else 5e-2,
+        eps_ppo=kwargs['eps_ppo'] if 'eps_ppo' in kwargs.keys() else 2e-2,
         ent_coeff=kwargs['ent_coeff'] if 'ent_coeff' in kwargs.keys() else 0e-3,
-        target_entropy=kwargs["target_entropy"] if 'target_entropy' in kwargs.keys() else -66.,
+        target_entropy=kwargs["target_entropy"] if 'target_entropy' in kwargs.keys() else -50.,
         entropy_lr=kwargs["entropy_lr"] if 'entropy_lr' in kwargs.keys() else 1e-3,
-        initial_entropy_bonus=kwargs["initial_entropy_bonus"] if 'initial_entropy_bonus' in kwargs.keys() else 0.,
+        initial_entropy_bonus=kwargs["initial_entropy_bonus"] if 'initial_entropy_bonus' in kwargs.keys() else 3e-3,
     )
 
-    name = f"""ePPO_stillrandompose_initsigma02nn_nobigsigma_nn_lr{agent_params['mu_lr']}_valuelr{agent_params['value_lr']}_bs{batch_size}_constrlr{agent_params['constraint_lr']}_nep{n_episodes}_neppf{n_episodes_per_fit}_neppol{agent_params['n_epochs_policy']}_epsppo{agent_params['eps_ppo']}_sigmainit{agent_params['sigma_init']}_ent{agent_params['ent_coeff']}_seed{seed}"""
+    name = f"""ePPO_stillrandompose_initsigma02nn_nobigsigma_nn512_SACentropy_tarm50lr1em3init3em3_lr{agent_params['mu_lr']}_valuelr{agent_params['value_lr']}_bs{batch_size}_constrlr{agent_params['constraint_lr']}_nep{n_episodes}_neppf{n_episodes_per_fit}_neppol{agent_params['n_epochs_policy']}_epsppo{agent_params['eps_ppo']}_sigmainit{agent_params['sigma_init']}_ent{agent_params['ent_coeff']}_nqcps{agent_params['n_q_cps']}_ntcps{agent_params['n_t_cps']}_seed{seed}"""
 
     results_dir = os.path.join(results_dir, name)
 
@@ -315,14 +315,18 @@ def build_agent_BSMPePPO(env_info, **agent_params):
 
     mdp_info = env_info['rl_info']
 
-    sigma = torch.tensor([0.1245, 0.1246, 0.1232, 0.1249, 0.1240, 0.1252, 0.1243, 0.1215, 0.1221,
-        0.1216, 0.1217, 0.1214, 0.1223, 0.1217, 0.1217, 0.1221, 0.1211, 0.1218,
-        0.1214, 0.1220, 0.1217, 0.1219, 0.1220, 0.1213, 0.1221, 0.1218, 0.1214,
-        0.1222, 0.1224, 0.1226, 0.1222, 0.1224, 0.1223, 0.1217, 0.1224, 0.2284,
-        0.2493, 0.2607, 0.2672, 0.2700, 0.2391, 0.1390, 0.1438, 0.2439, 0.2233,
-        0.2178, 0.2721, 0.1565, 0.1367, 0.2177, 0.2342, 0.2219, 0.2281, 0.2139,
-        0.2219, 0.2356, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000,
-        0.1000, 0.1476, 0.0339])
+    sigma_q = 0.125 * torch.ones((n_trainable_q_pts, n_dim))
+    sigma_t = torch.tensor([0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000,
+        0.1000, 0.1000, 0.1420, 0.1641])
+    sigma = torch.cat([sigma_q.reshape(-1), sigma_t]).type(torch.FloatTensor)
+    #sigma = torch.tensor([0.1245, 0.1246, 0.1232, 0.1249, 0.1240, 0.1252, 0.1243, 0.1215, 0.1221,
+    #    0.1216, 0.1217, 0.1214, 0.1223, 0.1217, 0.1217, 0.1221, 0.1211, 0.1218,
+    #    0.1214, 0.1220, 0.1217, 0.1219, 0.1220, 0.1213, 0.1221, 0.1218, 0.1214,
+    #    0.1222, 0.1224, 0.1226, 0.1222, 0.1224, 0.1223, 0.1217, 0.1224, 0.2284,
+    #    0.2493, 0.2607, 0.2672, 0.2700, 0.2391, 0.1390, 0.1438, 0.2439, 0.2233,
+    #    0.2178, 0.2721, 0.1565, 0.1367, 0.2177, 0.2342, 0.2219, 0.2281, 0.2139,
+    #    0.2219, 0.2356, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000,
+    #    0.1000, 0.1476, 0.0339])
     #sigma = torch.tensor([0.0650, 0.0650, 0.0650, 0.0651, 0.0652, 0.0653, 0.0649, 0.0652, 0.0650,
     #    0.0650, 0.0648, 0.0651, 0.0652, 0.0649, 0.0651, 0.0651, 0.0650, 0.0650,
     #    0.0652, 0.0650, 0.0650, 0.0650, 0.0650, 0.0650, 0.0651, 0.0651, 0.0650,

@@ -29,7 +29,7 @@ class ConfigurationTimeNetwork(AirHockeyNetwork):
         super(ConfigurationTimeNetwork, self).__init__(input_space)
 
         activation = torch.nn.Tanh()
-        W = 256
+        W = 512
         self.fc = torch.nn.Sequential(
             torch.nn.Linear(input_shape[0], W), activation,
             torch.nn.Linear(W, W), activation,
