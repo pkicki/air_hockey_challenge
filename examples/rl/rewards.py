@@ -67,9 +67,10 @@ class HitReward:
 
                     miss_dist = np.abs(yend) - mdp.env_info['table']['goal_width'] / 2 
                     if miss_dist < 0:
-                        r += 0.5
+                        r *= 2.
                     else:
-                        r -= min(0.1 * miss_dist, r)
+                        #r -= min(0.1 * miss_dist, r)
+                        r /= 1. + 5. * miss_dist
 
                 ## Encourage the puck to end in the middle
                 #if puck_pos[0] > 0.7 and puck_vel[0] > 0.1:
