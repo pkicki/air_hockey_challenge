@@ -35,6 +35,9 @@ class HitReward:
             if (puck_pos[0] - mdp.env_info['table']['length'] / 2) > 0 > \
                     (np.abs(puck_pos[1]) - mdp.env_info['table']['goal_width'] / 2):
                 r = 50
+            elif puck_pos[0] > 0.9:
+                miss_dist = np.abs(puck_pos[1]) - mdp.env_info['table']['goal_width'] / 2
+                r = 20 / (1 + 10. * miss_dist)
             self.has_hit = False
         else:
             # If the puck has not yet been hit, encourage the robot to get closer to the puck
