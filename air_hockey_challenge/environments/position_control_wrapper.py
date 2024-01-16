@@ -285,7 +285,7 @@ class IiwaPositionHit(PositionControlIIWA, iiwas.AirHockeyHit):
             success, joint_pos = inverse_kinematics(self.env_info['robot']['robot_model'],
                                                     self.env_info['robot']['robot_data'],
                                                     np.concatenate(
-                                                        [cart_pos, [0.1 + self.env_info['robot']['universal_height']]]),
+                                                        [cart_pos, [0.2 + self.env_info['robot']['universal_height']]]),
                                                     initial_q=prev_joint_pos)
             assert success
 
