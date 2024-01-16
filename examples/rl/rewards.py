@@ -54,9 +54,26 @@ class HitReward:
             else:
                 r = min([1, 0.3 * np.maximum(puck_vel[0], 0.)])
 
-                # Encourage the puck to end in the middle
-                if puck_pos[0] > 0.7 and puck_vel[0] > 0.1:
-                    r += 0.5 - np.abs(puck_pos[1])
+                if puck_vel[0]:
+                    time2goalx = (goal[0] - puck_pos[0]) / puck_vel[0]
+                    yend = puck_pos[1] + puck_vel[1] * time2goalx
+                    #if np.abs(yend) < effective_width: # clean shot
+                    if np.abs(yend) > effective_width: # assume single bounce shot
+                        time2bounce = (effective_width - puck_pos[1]) / puck_vel[1]
+                        xbounce = puck_pos[0] + puck_vel[0] * time2bounce
+                        puck_vel_bounce = np.array([puck_vel[0], -puck_vel[1]])
+                        time2goalx = (goal[0] - xbounce) / puck_vel_bounce[0]
+                        yend = xbounce + puck_vel_bounce[1] * time2goalx
+
+                    miss_dist = np.abs(yend) - mdp.env_info['table']['goal_width'] / 2 
+                    if miss_dist < 0:
+                        r += 0.5
+                    else:
+                        r -= min(0.1 * miss_dist, r)
+
+                ## Encourage the puck to end in the middle
+                #if puck_pos[0] > 0.7 and puck_vel[0] > 0.1:
+                #    r += 0.5 - np.abs(puck_pos[1])
 
                 # penalizes the joint velocity
                 q = mdp.get_joints(next_state, 1)[0]
