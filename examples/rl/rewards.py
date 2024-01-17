@@ -51,7 +51,10 @@ class HitReward:
 
                 # Reward if vec_ee_puck and vec_puck_goal have the same direction
                 cos_ang_goal = np.clip(vec_puck_goal @ vec_ee_puck, 0, 1)
-                cos_ang = np.max([cos_ang_goal, cos_ang_side])
+
+                #cos_ang = np.max([cos_ang_goal, cos_ang_side])
+                cos_ang = cos_ang_goal
+
 
                 r = - dist_ee_puck / 2 + (cos_ang - 1) * 0.5
             else:
@@ -60,13 +63,12 @@ class HitReward:
                 if puck_vel[0]:
                     time2goalx = (goal[0] - puck_pos[0]) / puck_vel[0]
                     yend = puck_pos[1] + puck_vel[1] * time2goalx
-                    #if np.abs(yend) < effective_width: # clean shot
-                    if np.abs(yend) > effective_width: # assume single bounce shot
-                        time2bounce = (effective_width - puck_pos[1]) / puck_vel[1]
-                        xbounce = puck_pos[0] + puck_vel[0] * time2bounce
-                        puck_vel_bounce = np.array([puck_vel[0], -puck_vel[1]])
-                        time2goalx = (goal[0] - xbounce) / puck_vel_bounce[0]
-                        yend = xbounce + puck_vel_bounce[1] * time2goalx
+                    #if np.abs(yend) > effective_width: # assume single bounce shot
+                    #    time2bounce = (effective_width - puck_pos[1]) / puck_vel[1]
+                    #    xbounce = puck_pos[0] + puck_vel[0] * time2bounce
+                    #    puck_vel_bounce = np.array([puck_vel[0], -puck_vel[1]])
+                    #    time2goalx = (goal[0] - xbounce) / puck_vel_bounce[0]
+                    #    yend = xbounce + puck_vel_bounce[1] * time2goalx
 
                     miss_dist = np.abs(yend) - mdp.env_info['table']['goal_width'] / 2 
                     if miss_dist < 0:
@@ -179,7 +181,7 @@ def _has_hit(mdp, state):
     ee_pos, ee_vel = mdp.get_ee()
     puck_cur_pos, _ = mdp.get_puck(state)
     if np.linalg.norm(ee_pos[:2] - puck_cur_pos[:2]) < mdp.env_info['puck']['radius'] + \
-            mdp.env_info['mallet']['radius'] + 5e-3:
+            mdp.env_info['mallet']['radius'] + 5e-3 and np.abs(ee_pos[2] - 0.065) < 0.01:
         return True
     else:
         return False
