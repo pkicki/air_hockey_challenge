@@ -56,7 +56,7 @@ class HitReward:
                 cos_ang = cos_ang_goal
 
 
-                r = - dist_ee_puck / 2 + (cos_ang - 1) * 0.5
+                r = - dist_ee_puck / 2# + (cos_ang - 1) * 0.5
             else:
                 r = min([1, 0.3 * np.maximum(puck_vel[0], 0.)])
 
@@ -82,8 +82,8 @@ class HitReward:
                 #    r += 0.5 - np.abs(puck_pos[1])
 
                 # penalizes the joint velocity
-                q = mdp.get_joints(next_state, 1)[0]
-                r -= 0.01 * np.linalg.norm(q - mdp.init_state)
+                #q = mdp.get_joints(next_state, 1)[0]
+                #r -= 0.01 * np.linalg.norm(q - mdp.init_state)
         return r
 
 
