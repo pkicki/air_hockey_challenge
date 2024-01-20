@@ -70,6 +70,9 @@ class TrajectoryOptimizer:
         else:
             return False, b
 
+    def jacobian(self, q):
+        return jacobian(self.robot_model, self.robot_data, q)
+
     def solve_hit_config(self, x_des, v_des, q_0):
         reg = 1e-6
         dim = q_0.shape[0]

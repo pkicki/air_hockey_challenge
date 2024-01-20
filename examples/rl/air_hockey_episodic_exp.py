@@ -16,6 +16,7 @@ from examples.rl.bsmp.bspline import BSpline
 from examples.rl.bsmp.bspline_timeoptimal_approximator import BSplineFastApproximatorAirHockeyWrapper
 from examples.rl.bsmp.context_builder import IdentityContextBuilder
 from examples.rl.bsmp.network import ConfigurationTimeNetwork, ConfigurationTimeNetworkWrapper, LogSigmaNetworkWrapper
+from examples.rl.bsmp.utils import unpack_data_airhockey
 from examples.rl.bsmp.value_network import ValueNetwork
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
@@ -106,8 +107,8 @@ def experiment(env: str = '7dof-hit',
     if use_cuda:
         TorchUtils.set_default_device('cuda')
 
-    #wandb_run = wandb.init(project="air_hockey_challenge", config={}, dir=results_dir, name=name,
-    #           group=f'{env}_{alg}_ePPO_NN_diag_NN_value', tags=[str(env)])
+    wandb_run = wandb.init(project="air_hockey_challenge_fullrange_still", config={}, dir=results_dir, name=name,
+              group=f'test_{env}_{alg}_ePPO_newreward_undiscounted', tags=[str(env)])
 
     eval_params = dict(
         n_episodes=n_eval_episodes,
@@ -120,8 +121,8 @@ def experiment(env: str = '7dof-hit',
         debug=debug,
         interpolation_order=interpolation_order,
         moving_init=False,
-        horizon=100,
-        gamma=0.9,
+        horizon=150,
+        gamma=1.0,
     )
 
     env, env_info_ = env_builder(env, n_envs, env_params)
@@ -146,27 +147,44 @@ def experiment(env: str = '7dof-hit',
     best_success = -np.inf
     best_J_det = -np.inf
     best_J_sto = -np.inf
+    #if_learn = False
+    if_learn = True
     for epoch in range(n_epochs):
         print("Epoch: ", epoch)
-        core.learn(n_episodes=n_episodes, n_episodes_per_fit=n_episodes_per_fit, quiet=quiet)
-        J_sto = np.mean(dataset_callback.get().discounted_return)
-        init_states = dataset_callback.get().get_init_states()
-        context = core.agent.bsmp_agent._context_builder(init_states)
-        V_sto = np.mean(core.agent.bsmp_agent.value_function(context).detach().numpy())
-        E = np.mean(core.agent.bsmp_agent.distribution.entropy(context).detach().numpy())
-        VJ_bias = V_sto - J_sto
-        constraints_violation_sto = core.agent.bsmp_agent.compute_constraint_losses(torch.cat(dataset_callback.get().theta_list, axis=0), context).detach().numpy()
-        constraints_violation_sto_mean = np.mean(constraints_violation_sto, axis=0)
-        constraints_violation_sto_max = np.max(constraints_violation_sto, axis=0)
-        mu = core.agent.bsmp_agent.distribution.estimate_mu(context)
-        #mu = self.distribution._mu
-        constraints_violation_det = core.agent.bsmp_agent.compute_constraint_losses(mu, context).detach().numpy()
-        constraints_violation_det_mean = np.mean(constraints_violation_det, axis=0)
-        constraints_violation_det_max = np.max(constraints_violation_det, axis=0)
-        dataset_callback.clean()
+        if if_learn:
+            #core.agent.bsmp_agent.set_deterministic(True)
+            core.learn(n_episodes=n_episodes, n_episodes_per_fit=n_episodes_per_fit, quiet=quiet)
+            #core.agent.bsmp_agent.set_deterministic(False)
+            J_sto = np.mean(dataset_callback.get().discounted_return)
+            init_states = dataset_callback.get().get_init_states()
+            context = core.agent.bsmp_agent._context_builder(init_states)
+            V_sto = np.mean(core.agent.bsmp_agent.value_function(context).detach().numpy())
+            E = np.mean(core.agent.bsmp_agent.distribution.entropy(context).detach().numpy())
+            VJ_bias = V_sto - J_sto
+            constraints_violation_sto = core.agent.bsmp_agent.compute_constraint_losses(torch.cat(dataset_callback.get().theta_list, axis=0), context).detach().numpy()
+            constraints_violation_sto_mean = np.mean(constraints_violation_sto, axis=0)
+            constraints_violation_sto_max = np.max(constraints_violation_sto, axis=0)
+            mu = core.agent.bsmp_agent.distribution.estimate_mu(context)
+            constraints_violation_det = core.agent.bsmp_agent.compute_constraint_losses(mu, context).detach().numpy()
+            constraints_violation_det_mean = np.mean(constraints_violation_det, axis=0)
+            constraints_violation_det_max = np.max(constraints_violation_det, axis=0)
+            q, q_dot, q_ddot, t, dt, duration = core.agent.bsmp_agent.policy.compute_trajectory_from_theta(mu, context)
+            mean_duration = np.mean(duration.detach().numpy())
+            dataset_callback.clean()
+        else:
+            J_sto = 0.
+            V_sto = 0.
+            E = 0.
+            VJ_bias = 0.
+            constraints_violation_sto_mean = np.zeros(18)
+            constraints_violation_sto_max = np.zeros(18)
+            constraints_violation_det_mean = np.zeros(18)
+            constraints_violation_det_max = np.zeros(18)
 
         # Evaluate
-        J_det, R, success, c_avg, c_max = compute_metrics(core, eval_params)
+        J_det, R, success, c_avg, c_max, states, actions = compute_metrics(core, eval_params)
+        #assert False
+        #wandb_plotting(core, states, actions, epoch)
 
         if "logger_callback" in kwargs.keys():
             kwargs["logger_callback"](J_det, J_sto, V_sto, R, E, success, c_avg, c_max)
@@ -185,6 +203,7 @@ def experiment(env: str = '7dof-hit',
                                  "max/": {str(i): a for i, a in enumerate(constraints_violation_sto_max)}},
             "Constraints_det/": {"avg/": {str(i): a for i, a in enumerate(constraints_violation_det_mean)},
                                  "max/": {str(i): a for i, a in enumerate(constraints_violation_det_max)}},
+            "Stats/": {"mean_duration": mean_duration},
             # "Constraint": {
             #     "max": {"pos": np.max(c_max['joint_pos_constr']),
             #             "vel": np.max(c_max['joint_vel_constr']),
@@ -315,10 +334,58 @@ def build_agent_BSMPePPO(env_info, **agent_params):
 
     mdp_info = env_info['rl_info']
 
-    sigma_q = 0.125 * torch.ones((n_trainable_q_pts, n_dim))
-    sigma_t = torch.tensor([0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000,
-        0.1000, 0.1000, 0.1420, 0.1641])
-    sigma = torch.cat([sigma_q.reshape(-1), sigma_t]).type(torch.FloatTensor)
+    #sigma =  torch.tensor([-0.0065, -0.0068, -0.0066, -0.0067, -0.0064, -0.0068, -0.0066,  0.0138,
+    #     0.0098,  0.0134,  0.0136,  0.0134,  0.0114,  0.0138,  0.0121,  0.0090,
+    #     0.0073,  0.0129,  0.0068,  0.0069,  0.0140,  0.0085,  0.0096,  0.0085,
+    #     0.0087,  0.0084,  0.0087,  0.0085,  0.0089,  0.0102,  0.0090,  0.0096,
+    #     0.0101,  0.0098,  0.0090,  0.0088,  0.0091,  0.0086,  0.0103,  0.0083,
+    #     0.0111,  0.0092,  0.0062,  0.0073,  0.0079,  0.0082,  0.0076,  0.0113,
+    #     0.0119,  0.0132,  0.0106,  0.0132, -0.0020,  0.0129,  0.0049,  0.0138,
+    #    -0.0064, -0.0070, -0.0067, -0.0073, -0.0063, -0.0072, -0.0066,  0.0327,
+    #     0.0319,  0.0326,  0.0314,  0.0326,  0.0322,  0.0329,  0.0042, -0.0067,
+    #     0.0016, -0.0077,  0.0027, -0.0070,  0.0073, -0.0037, -0.0053, -0.0021,
+    #    -0.0060, -0.0028, -0.0065, -0.0047,  0.0860,  0.0877,  0.0854,  0.0813,
+    #     0.0956,  0.0946,  0.0785,  0.0862,  0.0861,  0.0848]).type(torch.FloatTensor).abs()
+
+    #sigma_q = 0.01 * torch.ones((n_trainable_q_pts, n_dim))
+    #sigma_q[-2] = 0.05
+    #sigma_q[-3] = 0.4
+    #sigma_t = torch.tensor([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
+    #sigma = torch.cat([sigma_q.reshape(-1), sigma_t]).type(torch.FloatTensor)
+
+    #sigma = torch.tensor([0.0311, 0.0317, 0.0311, 0.0315, 0.0310, 0.0316, 0.0311, 0.0311, 0.0318,
+    #    0.0311, 0.0315, 0.0312, 0.0318, 0.0311, 0.0311, 0.0316, 0.0311, 0.0314,
+    #    0.0312, 0.0315, 0.0311, 0.0311, 0.0317, 0.0311, 0.0317, 0.0311, 0.0319,
+    #    0.0310, 0.0310, 0.0316, 0.0310, 0.0314, 0.0311, 0.0314, 0.0310, 0.0309,
+    #    0.0313, 0.0310, 0.0315, 0.0309, 0.0310, 0.0308, 0.0100, 0.0100, 0.0100,
+    #    0.0100, 0.0100, 0.0100, 0.0310, 0.0310, 0.0315, 0.0309, 0.0317, 0.0308,
+    #    0.0309, 0.0311, 0.1208, 0.1205, 0.1209, 0.1209, 0.1209, 0.1212, 0.1210,
+    #    0.1208, 0.1199, 0.1205]).type(torch.FloatTensor)
+
+    sigma = torch.tensor([0.1238, 0.0915, 0.1241, 0.1216, 0.1237, 0.0924, 0.1237, 0.1308, 0.1303,
+        0.1310, 0.1314, 0.1310, 0.1305, 0.1306, 0.1306, 0.1314, 0.1306, 0.1309,
+        0.1308, 0.1316, 0.1303, 0.1300, 0.1314, 0.1303, 0.1312, 0.1299, 0.1305,
+        0.1299, 0.1209, 0.1186, 0.1221, 0.1096, 0.1206, 0.0469, 0.1204, 0.1184,
+        0.1171, 0.1179, 0.0372, 0.1005, 0.0493, 0.0994, 0.0300, 0.0300, 0.0300,
+        0.0300, 0.0300, 0.0300, 0.1146, 0.1198, 0.0843, 0.1222, 0.0861, 0.1205,
+        0.0068, 0.1215, 0.0984, 0.0394, 0.2153, 0.2476, 0.2546, 0.2559, 0.2477,
+        0.1281, 0.0432, 0.0671]).type(torch.FloatTensor)
+
+    #sigma = torch.tensor([-0.0191, -0.0185, -0.0189, -0.0164, -0.0190, -0.0167, -0.0174, -0.0174,
+    #    -0.0192, -0.0162, -0.0151, -0.0160, -0.0169, -0.0168, -0.0135, -0.0094,
+    #    -0.0146, -0.0092, -0.0131, -0.0155, -0.0141, -0.0219, -0.0179, -0.0222,
+    #    -0.0188, -0.0190, -0.0166, -0.0189, -0.0179, -0.0186, -0.0191, -0.0175,
+    #    -0.0160, -0.0199, -0.0193,  0.0906,  0.0847,  0.0874,  0.0490,  0.0716,
+    #     0.0297,  0.0657,  0.0300,  0.0300,  0.0300,  0.0300,  0.0300,  0.0300,
+    #     0.0226, -0.0199, -0.0117, -0.0273, -0.0070, -0.0252, -0.0154,  0.0045,
+    #     0.0559,  0.0553,  0.0584,  0.0666,  0.0667,  0.0655,  0.0593,  0.0581,
+    #     0.0532,  0.0541]).type(torch.FloatTensor).abs()
+
+    #sigma_q = 0.125 * torch.ones((n_trainable_q_pts, n_dim))
+    #sigma_t = torch.tensor([0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000,
+    #    0.1000, 0.1000, 0.1420, 0.1641])
+    #sigma = torch.cat([sigma_q.reshape(-1), sigma_t]).type(torch.FloatTensor)
+
     #sigma = torch.tensor([0.1245, 0.1246, 0.1232, 0.1249, 0.1240, 0.1252, 0.1243, 0.1215, 0.1221,
     #    0.1216, 0.1217, 0.1214, 0.1223, 0.1217, 0.1217, 0.1221, 0.1211, 0.1218,
     #    0.1214, 0.1220, 0.1217, 0.1219, 0.1220, 0.1213, 0.1221, 0.1218, 0.1214,
@@ -373,7 +440,7 @@ def build_agent_BSMPePPO(env_info, **agent_params):
     value_function_approximator = ValueNetwork(mdp_info.observation_space)
 
     mu = torch.zeros(n_trainable_pts)
-    policy = BSMPPolicy(env_info["dt"], n_q_pts, n_dim, n_t_pts, n_pts_fixed_begin, n_pts_fixed_end, robot_constraints)
+    policy = BSMPPolicy(env_info, env_info["dt"], n_q_pts, n_dim, n_t_pts, n_pts_fixed_begin, n_pts_fixed_end, robot_constraints)
     #sigma = agent_params["sigma_init"] * torch.ones(n_trainable_pts)
     #dist = DiagonalGaussianBSMPSigmaDistribution(mu_approximator, log_sigma_approximator)
     #dist = DiagonalGaussianBSMPDistribution(mu_approximator, sigma)
@@ -433,6 +500,7 @@ def compute_metrics(core, eval_params):
 
     J = np.mean(dataset.discounted_return)
     R = np.mean(dataset.undiscounted_return)
+    print(dataset.undiscounted_return)
 
     eps_length = dataset.episodes_length
     success = 0
@@ -455,7 +523,36 @@ def compute_metrics(core, eval_params):
     for key in c_avg.keys():
         c_avg[key] /= N
 
-    return J, R, success, c_avg, c_max
+    state = dataset.state
+    #state = state.reshape(dataset.n_episodes, int(state.shape[0] / dataset.n_episodes), state.shape[1])
+    action = dataset.action
+    #action = action.reshape(dataset.n_episodes, int(action.shape[0] / dataset.n_episodes), 2, 7).transpose(0, 1, 3, 2)
+    return J, R, success, c_avg, c_max, state, action
+
+
+def wandb_plotting(core, states, actions, step):
+    puck, puck_dot, q, _, q_dot, _, _, _, _ = unpack_data_airhockey(states)
+    ee_pos, ee_rot = core.agent.bsmp_agent.compute_forward_kinematics(torch.tensor(q), torch.tensor(q_dot))
+    ee_pos = ee_pos.detach().numpy()
+    ee_rot = ee_rot.detach().numpy()
+    q_d = actions[..., 0]
+    q_dot_d = actions[..., 1]
+    ee_pos_d, ee_rot_d = core.agent.bsmp_agent.compute_forward_kinematics(torch.tensor(q_d), torch.tensor(q_dot_d))
+    ee_pos_d = ee_pos_d.detach().numpy()
+    ee_rot_d = ee_rot_d.detach().numpy()
+    columns = ['actual', 'desired']
+    idx = 0
+    wandb.log({"plots/XY" : wandb.plot.line_series(
+    xs=[ee_pos[idx, :, 0], ee_pos_d[idx, :, 0]],
+    ys=[ee_pos[idx, :, 1], ee_pos_d[idx, :, 1]],
+    keys=columns,
+    title="XY")}, step=step)
+    wandb.log({"plots/Z" : wandb.plot.line_series(
+    xs=[np.arange(ee_pos.shape[1]), np.arange(ee_pos_d.shape[1])],
+    ys=[ee_pos[idx, :, 2], ee_pos_d[idx, :, 2]],
+    keys=columns,
+    title="Z")}, step=step)
+        
 
 
 if __name__ == "__main__":

@@ -37,7 +37,7 @@ class HitReward:
                 r = 50
             elif puck_pos[0] > 0.9:
                 miss_dist = np.abs(puck_pos[1]) - mdp.env_info['table']['goal_width'] / 2
-                r = 20 / (1 + 10. * miss_dist)
+                r = 50 / (1 + 10. * miss_dist)
             self.has_hit = False
         else:
             # If the puck has not yet been hit, encourage the robot to get closer to the puck
@@ -58,7 +58,8 @@ class HitReward:
 
                 r = - dist_ee_puck / 2# + (cos_ang - 1) * 0.5
             else:
-                r = min([1, 0.3 * np.maximum(puck_vel[0], 0.)])
+                #r = min([1, 0.3 * np.maximum(puck_vel[0], 0.)])
+                v = np.linalg.norm(puck_vel[:2])
 
                 if puck_vel[0]:
                     time2goalx = (goal[0] - puck_pos[0]) / puck_vel[0]
@@ -72,10 +73,10 @@ class HitReward:
 
                     miss_dist = np.abs(yend) - mdp.env_info['table']['goal_width'] / 2 
                     if miss_dist < 0:
-                        r *= 2.
+                        r = v
                     else:
                         #r -= min(0.1 * miss_dist, r)
-                        r /= 1. + 5. * miss_dist
+                        r = v / (1. + 5. * miss_dist)
 
                 ## Encourage the puck to end in the middle
                 #if puck_pos[0] > 0.7 and puck_vel[0] > 0.1:
@@ -179,9 +180,11 @@ class PrepareReward:
 
 def _has_hit(mdp, state):
     ee_pos, ee_vel = mdp.get_ee()
-    puck_cur_pos, _ = mdp.get_puck(state)
-    if np.linalg.norm(ee_pos[:2] - puck_cur_pos[:2]) < mdp.env_info['puck']['radius'] + \
-            mdp.env_info['mallet']['radius'] + 5e-3 and np.abs(ee_pos[2] - 0.065) < 0.01:
-        return True
-    else:
-        return False
+    puck_cur_pos, puck_cur_vel = mdp.get_puck(state)
+    # todo: make it reliable for moving puck case
+    return np.linalg.norm(puck_cur_vel) > 1e-2
+    #if np.linalg.norm(ee_pos[:2] - puck_cur_pos[:2]) < mdp.env_info['puck']['radius'] + \
+    #        mdp.env_info['mallet']['radius'] + 5e-3 and np.abs(ee_pos[2] - 0.065) < 0.02:
+    #    return True
+    #else:
+    #    return False

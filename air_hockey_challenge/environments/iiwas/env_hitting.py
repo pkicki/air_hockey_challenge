@@ -22,9 +22,9 @@ class AirHockeyHit(AirHockeyDouble):
         self.moving_init = moving_init
         hit_width = self.env_info['table']['width'] / 2 - self.env_info['puck']['radius'] - \
                     self.env_info['mallet']['radius'] * 2
-        #self.hit_range = np.array([[-0.7, -0.2], [-hit_width, hit_width]])  # Table Frame
+        self.hit_range = np.array([[-0.7, -0.2], [-hit_width, hit_width]])  # Table Frame
         #self.hit_range = np.array([[-0.6, -0.4], [-0.1, 0.1]])  # Table Frame
-        self.hit_range = np.array([[-0.5, -0.5], [0.0, 0.0]])  # Table Frame
+        #self.hit_range = np.array([[-0.5, -0.5], [0.0, 0.0]])  # Table Frame
         self.init_velocity_range = (0, 0.5)  # Table Frame
         self.init_ee_range = np.array([[0.60, 1.25], [-0.4, 0.4]])  # Robot Frame
 

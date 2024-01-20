@@ -38,7 +38,7 @@ class ConfigurationTimeNetwork(AirHockeyNetwork):
 
         self.q_est = torch.nn.Sequential(
             torch.nn.Linear(W, W), activation,
-            torch.nn.Linear(W, output_shape[0]), activation,
+            torch.nn.Linear(W, output_shape[0])#, activation,
         )
 
         self.t_est = torch.nn.Sequential(

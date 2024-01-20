@@ -45,6 +45,12 @@ class BSMPePPO(ePPO):
         self.load_robot()
         self._epoch_no = 0
 
+        self._q = None
+        self._q_dot = None
+        self._q_ddot = None
+        self._t = None
+        self._ee_pos = None
+
         super().__init__(mdp_info, distribution, policy, optimizer, n_epochs_policy,
                          batch_size, eps_ppo, ent_coeff, context_builder)
         
@@ -234,6 +240,12 @@ class BSMPePPO(ePPO):
             ee_pos, ee_rot = self.compute_forward_kinematics(q, q_dot)
             ee_pos = ee_pos.detach().numpy()
             ee_rot = ee_rot.detach().numpy()
+
+            self._q = q_
+            self._q_dot = q_dot_
+            self._q_ddot = q_ddot_
+            self._t = t_
+            self._ee_pos = ee_pos
 
             plt.subplot(121)
             plt.plot(ee_pos[0, :, 0], ee_pos[0, :, 1])

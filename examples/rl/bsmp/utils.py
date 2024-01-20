@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 def huber_loss(x, dt):
     x = torch.nn.HuberLoss(reduction='none')(x, torch.zeros_like(x))
@@ -22,7 +23,7 @@ def unpack_data_airhockey(x):
     q0 = x[..., 6:n+6]
     dq0 = x[..., n+6:2*n+6]
     opponent_mallet = x[..., 2*n+6:2*n+9]
-    z = torch.zeros_like(dq0)
+    z = torch.zeros_like(dq0) if isinstance(dq0, torch.Tensor) else np.zeros_like(dq0)
     ddq0 = z
     qk = z
     dqk = z
