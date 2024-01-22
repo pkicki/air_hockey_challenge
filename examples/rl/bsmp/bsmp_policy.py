@@ -66,6 +66,8 @@ class BSMPPolicy(Policy):
             _qd1='primitive',
             _td1='primitive',
             _traj_no='primitive'
+            env_info='pickle',
+            optimizer='pickle',
         )
 
     def unpack_context(self, context):
@@ -142,7 +144,8 @@ class BSMPPolicy(Policy):
         goal = np.array([2.484, 0., 0.])
         # Compute the vector that shoot the puck directly to the goal
         vec_puck_goal = (goal - puck_pos) / np.linalg.norm(goal - puck_pos)
-        x_des = puck_pos - (self.env_info['mallet']['radius'] + self.env_info['puck']['radius']) * vec_puck_goal
+        #x_des = puck_pos - (self.env_info['mallet']['radius'] + self.env_info['puck']['radius']) * vec_puck_goal
+        x_des = puck_pos# - (self.env_info['mallet']['radius'] + self.env_info['puck']['radius']) * vec_puck_goal
         x_des[:, -1] = self.env_info['robot']['ee_desired_height'] - 0.03# - self.env_info['robot']['universal_height']
         r1 = torch.cat([torch.cos(trainable_delta_angle), -torch.sin(trainable_delta_angle), torch.zeros_like(trainable_delta_angle)], axis=-1)
         r2 = torch.cat([torch.sin(trainable_delta_angle), torch.cos(trainable_delta_angle), torch.zeros_like(trainable_delta_angle)], axis=-1)
