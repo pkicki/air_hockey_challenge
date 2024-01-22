@@ -65,9 +65,9 @@ class BSMPPolicy(Policy):
             _qdd3='primitive',
             _qd1='primitive',
             _td1='primitive',
-            _traj_no='primitive'
+            _traj_no='primitive',
             env_info='pickle',
-            optimizer='pickle',
+            optimizer='pickle'
         )
 
     def unpack_context(self, context):
