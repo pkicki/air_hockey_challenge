@@ -130,6 +130,7 @@ class BSMPPolicy(Policy):
     def compute_trajectory_from_theta(self, theta, context):
         q_0, q_d, q_dot_0, q_dot_d, q_ddot_0, q_ddot_d, puck = self.unpack_context(context)
         trainable_q_cps, trainable_t_cps = self.extract_qt(theta)
+        trainable_t_cps = trainable_t_cps + torch.log(1.33 * torch.ones_like(trainable_t_cps))
         #trainable_q_cps = torch.tanh(trainable_q_cps/10.) * np.pi
         middle_trainable_q_pts = torch.tanh(trainable_q_cps[:, :-3]/10.) * np.pi
         trainable_q_d = torch.tanh(trainable_q_cps[:, -1:]/10.) * np.pi
@@ -144,17 +145,15 @@ class BSMPPolicy(Policy):
         goal = np.array([2.484, 0., 0.])
         # Compute the vector that shoot the puck directly to the goal
         vec_puck_goal = (goal - puck_pos) / np.linalg.norm(goal - puck_pos)
-        #x_des = puck_pos - (self.env_info['mallet']['radius'] + self.env_info['puck']['radius']) * vec_puck_goal
-        x_des = puck_pos# - (self.env_info['mallet']['radius'] + self.env_info['puck']['radius']) * vec_puck_goal
-        x_des[:, -1] = self.env_info['robot']['ee_desired_height'] - 0.03# - self.env_info['robot']['universal_height']
         r1 = torch.cat([torch.cos(trainable_delta_angle), -torch.sin(trainable_delta_angle), torch.zeros_like(trainable_delta_angle)], axis=-1)
         r2 = torch.cat([torch.sin(trainable_delta_angle), torch.cos(trainable_delta_angle), torch.zeros_like(trainable_delta_angle)], axis=-1)
         r3 = torch.cat([torch.zeros_like(trainable_delta_angle), torch.zeros_like(trainable_delta_angle), torch.ones_like(trainable_delta_angle)], axis=-1)
         R = torch.stack([r1, r2, r3], axis=-2)
-        #R = torch.tensor([[torch.cos(trainable_delta_angle), -torch.sin(trainable_delta_angle), 0.],
-        #                    [torch.sin(trainable_delta_angle), torch.cos(trainable_delta_angle), 0.],
-        #                    [0., 0., 1.]])[None]
         v_des = (R @ torch.tensor(vec_puck_goal)[..., None])[..., 0]
+
+        #x_des = puck_pos - (self.env_info['mallet']['radius'] + self.env_info['puck']['radius']) * v_des
+        x_des = puck_pos# - (self.env_info['mallet']['radius'] + self.env_info['puck']['radius'] - 0.01) * v_des
+        x_des[:, -1] = self.env_info['robot']['ee_desired_height'] - 0.03# - self.env_info['robot']['universal_height']
 
         q_d_s = []
         for k in range(q_0.shape[0]):
@@ -168,7 +167,7 @@ class BSMPPolicy(Policy):
             q_dot_d_s.append(q_dot_d)
         q_dot_d_bias = torch.stack(q_dot_d_s, dim=0)[:, None]
         scale = 1. / torch.max(torch.abs(q_dot_d_bias) / torch.tensor(self.env_info['robot']['joint_vel_limit'][1]), axis=-1, keepdim=True)[0]
-        q_dot_d = q_dot_d_bias * scale #* trainable_scale
+        q_dot_d = q_dot_d_bias * scale * trainable_scale
         #q_d = trainable_q_cps[:, -1:] + q_d_bias
         #q_dot_d = trainable_q_cps[:, -2:-1] + q_dot_d_bias
 
