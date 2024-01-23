@@ -8,6 +8,7 @@ import torch.optim as optim
 import torch.random
 import wandb
 from experiment_launcher import run_experiment, single_experiment
+from baseline.baseline_agent.optimizer import TrajectoryOptimizer
 from examples.rl.bsmp.bsmp_distribution import DiagonalGaussianBSMPDistribution, DiagonalGaussianBSMPSigmaDistribution, DiagonalMultiGaussianBSMPSigmaDistribution
 
 from examples.rl.bsmp.bsmp_eppo import BSMPePPO
@@ -40,6 +41,7 @@ from mushroom_rl.approximators import Regressor
 from mushroom_rl.approximators.parametric import TorchApproximator
 from mushroom_rl.rl_utils.optimizers import AdaptiveOptimizer
 from mushroom_rl.distributions import DiagonalGaussianTorchDistribution, CholeskyGaussianTorchDistribution
+from mushroom_rl.environments.mujoco_envs.air_hockey import AirHockeyHit
 
 def custom_repr(self):
     return f'{{Tensor:{tuple(self.shape)}}} {original_repr(self)}'
@@ -56,7 +58,7 @@ def experiment(env: str = '7dof-hit',
                n_steps_per_fit: int = None,
                n_episodes: int = 32,
                n_episodes_per_fit: int = 32,
-               n_eval_episodes: int = 2,
+               n_eval_episodes: int = 10,
 
                batch_size: int = 32,
                use_cuda: bool = False,
@@ -80,6 +82,7 @@ def experiment(env: str = '7dof-hit',
         alg=alg,
         checkpoint=checkpoint,
         seed=seed,
+        n_dim=7,
         n_q_cps=kwargs['n_q_cps'] if 'n_q_cps' in kwargs.keys() else 11,
         n_t_cps=kwargs['n_t_cps'] if 'n_t_cps' in kwargs.keys() else 10,
         n_pts_fixed_begin=3,
@@ -93,12 +96,12 @@ def experiment(env: str = '7dof-hit',
         batch_size=batch_size,
         eps_ppo=kwargs['eps_ppo'] if 'eps_ppo' in kwargs.keys() else 2e-2,
         ent_coeff=kwargs['ent_coeff'] if 'ent_coeff' in kwargs.keys() else 0e-3,
-        target_entropy=kwargs["target_entropy"] if 'target_entropy' in kwargs.keys() else -50.,
-        entropy_lr=kwargs["entropy_lr"] if 'entropy_lr' in kwargs.keys() else 1e-3,
+        target_entropy=kwargs["target_entropy"] if 'target_entropy' in kwargs.keys() else -99.,
+        entropy_lr=kwargs["entropy_lr"] if 'entropy_lr' in kwargs.keys() else 1e-4,
         initial_entropy_bonus=kwargs["initial_entropy_bonus"] if 'initial_entropy_bonus' in kwargs.keys() else 3e-3,
     )
 
-    name = f"""ePPO_stillrandompose_initsigma02nn_nobigsigma_nn512_SACentropy_tarm50lr1em3init3em3_lr{agent_params['mu_lr']}_valuelr{agent_params['value_lr']}_bs{batch_size}_constrlr{agent_params['constraint_lr']}_nep{n_episodes}_neppf{n_episodes_per_fit}_neppol{agent_params['n_epochs_policy']}_epsppo{agent_params['eps_ppo']}_sigmainit{agent_params['sigma_init']}_ent{agent_params['ent_coeff']}_nqcps{agent_params['n_q_cps']}_ntcps{agent_params['n_t_cps']}_seed{seed}"""
+    name = f"""ePPO_take2_newreward_differentscaling10_biased_hor150_onlydistnogerhashitonlyclean_initsigmaddq1nn_tarm99lr1em4init3em3_lr{agent_params['mu_lr']}_valuelr{agent_params['value_lr']}_bs{batch_size}_constrlr{agent_params['constraint_lr']}_nep{n_episodes}_neppf{n_episodes_per_fit}_neppol{agent_params['n_epochs_policy']}_epsppo{agent_params['eps_ppo']}_sigmainit{agent_params['sigma_init']}_ent{agent_params['ent_coeff']}_nqcps{agent_params['n_q_cps']}_ntcps{agent_params['n_t_cps']}_seed{seed}"""
 
     results_dir = os.path.join(results_dir, name)
 
@@ -107,8 +110,8 @@ def experiment(env: str = '7dof-hit',
     if use_cuda:
         TorchUtils.set_default_device('cuda')
 
-    wandb_run = wandb.init(project="air_hockey_challenge_fullrange_still", config={}, dir=results_dir, name=name,
-              group=f'test_{env}_{alg}_ePPO_newreward_undiscounted', tags=[str(env)])
+    #wandb_run = wandb.init(project="air_hockey_challenge_fullrange_still", config={}, dir=results_dir, name=name,
+    #          group=f'{env}_{alg}_ePPO_newreward_undiscounted', tags=[str(env)])
 
     eval_params = dict(
         n_episodes=n_eval_episodes,
@@ -127,16 +130,23 @@ def experiment(env: str = '7dof-hit',
 
     env, env_info_ = env_builder(env, n_envs, env_params)
 
-    agent_params["n_dim"] = env_info_["robot"]["n_joints"]
-
     agent = agent_builder(env_info_, agent_params)
+    agent_path = os.path.join(os.path.dirname(__file__), "trained_models/ePPO_puckcenter_newreward_differentscaling10_biased_hor150_onlydistnogerhashitonlyclean_initsigmaddq1nn_tarm99lr1em4init3em3_lr5e-05_valuelr0.0005_bs32_constrlr0.01_nep32_neppf32_neppol32_epsppo0.02_sigmainit0.1_ent0.001_nqcps11_ntcps10_seed444/agent-444-750.msh")
+    #agent_path = os.path.join(os.path.dirname(__file__), "trained_models/ePPO_stillrandompose_initsigma02nn_nobigsigma_nn_SACentropytest_tarm33lr1em3init2em3_lr5e-05_valuelr0.0005_bs32_constrlr0.01_nep32_neppf32_neppol32_epsppo0.02_sigmainit0.1_ent0.0_seed444/agent-444-2745.msh")
+    #agent_path = os.path.join(os.path.dirname(__file__), "trained_models/ePPO_stillrandompose_initsigma02nn_nobigsigma_nn_lr5e-05_valuelr0.0005_bs64_constrlr0.01_nep64_neppf64_neppol32_epsppo0.02_sigmainit0.1_ent0.001_seed444/7dof-hit/agent-444-681.msh")
+    #agent_path = os.path.join(os.path.dirname(__file__), "logs/444/ePPO_stillrandompose_nn_lr5e-05_bs32_constrlr0.01_nep32_neppf32_neppol32_epsppo0.05_sigmainit0.1_ent0.0_seed444/7dof-hit/agent-444.msh")
+    #agent_path = os.path.join(os.path.dirname(__file__), "trained_models/ePPO_stillrandompose10cm_nn_initsigma01nn_nobigsigma_lr5e-05_bs64_constrlr0.01_nep64_neppf64_neppol32_epsppo0.02_sigmainit0.1_ent0.0_seed444/7dof-hit/agent-444.msh")
     #agent_path = os.path.join(os.path.dirname(__file__), "trained_models/ePPO_stillsamepose_nonn_sigma_lr0.01_bs32_constrlr0.01_nep32_neppf32_neppol4_epsppo0.02_sigmainit0.1_ent0.0_seed444_betapos1em5_betavel1em3_betaacc_1em4/7dof-hit/agent-444.msh")
     ##agent_path = os.path.join(os.path.dirname(__file__), "trained_models/ePPO_stillsamepose_nonn_sigma_lr0.03_bs32_constrlr0.01_nep32_neppf32_neppol4_epsppo0.05_sigmainit0.1_ent0.0_seed444/7dof-hit/agent-444.msh")
     ##agent_path = os.path.join(os.path.dirname(__file__), "trained_models/ePPO_stillsamepose_nonn_lr0.03_bs32_constrlr0.01_nep32_neppf32_neppol4_epsppo0.02_sigmainit0.1_ent0.0_seed444/7dof-hit/agent-444.msh")
+
     #print("Load agent from: ", agent_path)
     #agent = Agent.load(agent_path)
     #agent.bsmp_agent.load_robot()
-    #agent.bsmp_agent.policy._traj_no = 0
+    #agent.bsmp_agent._optimizer = torch.optim.Adam(agent.bsmp_agent.distribution.parameters(), lr=agent_params["mu_lr"])
+    #agent.bsmp_agent._epoch_no = 0
+    #agent.bsmp_agent.policy.env_info = env_info_
+    #agent.bsmp_agent.policy.optimizer = TrajectoryOptimizer(env_info_)
 
     dataset_callback = CollectDataset()
     if n_envs > 1:
@@ -247,14 +257,14 @@ def experiment(env: str = '7dof-hit',
 
 def env_builder(env_name, n_envs, env_params):
     # Specify the customize reward function
-    if "hit" in env_name:
-        env_params["custom_reward_function"] = HitReward()
+    #if "hit" in env_name:
+    #    env_params["custom_reward_function"] = HitReward()
 
-    if "defend" in env_name:
-        env_params["custom_reward_function"] = DefendReward()
+    #if "defend" in env_name:
+    #    env_params["custom_reward_function"] = DefendReward()
 
-    if "prepare" in env_name:
-        env_params["custom_reward_function"] = PrepareReward()
+    #if "prepare" in env_name:
+    #    env_params["custom_reward_function"] = PrepareReward()
 
     env = AirHockeyChallengeWrapper(env_name, **env_params)
     if n_envs > 1:
@@ -362,14 +372,18 @@ def build_agent_BSMPePPO(env_info, **agent_params):
     #    0.0309, 0.0311, 0.1208, 0.1205, 0.1209, 0.1209, 0.1209, 0.1212, 0.1210,
     #    0.1208, 0.1199, 0.1205]).type(torch.FloatTensor)
 
-    sigma = torch.tensor([0.1238, 0.0915, 0.1241, 0.1216, 0.1237, 0.0924, 0.1237, 0.1308, 0.1303,
-        0.1310, 0.1314, 0.1310, 0.1305, 0.1306, 0.1306, 0.1314, 0.1306, 0.1309,
-        0.1308, 0.1316, 0.1303, 0.1300, 0.1314, 0.1303, 0.1312, 0.1299, 0.1305,
-        0.1299, 0.1209, 0.1186, 0.1221, 0.1096, 0.1206, 0.0469, 0.1204, 0.1184,
-        0.1171, 0.1179, 0.0372, 0.1005, 0.0493, 0.0994, 0.0300, 0.0300, 0.0300,
-        0.0300, 0.0300, 0.0300, 0.1146, 0.1198, 0.0843, 0.1222, 0.0861, 0.1205,
-        0.0068, 0.1215, 0.0984, 0.0394, 0.2153, 0.2476, 0.2546, 0.2559, 0.2477,
-        0.1281, 0.0432, 0.0671]).type(torch.FloatTensor)
+    #sigma = torch.tensor([0.1238, 0.0915, 0.1241, 0.1216, 0.1237, 0.0924, 0.1237, 0.1308, 0.1303,
+    #    0.1310, 0.1314, 0.1310, 0.1305, 0.1306, 0.1306, 0.1314, 0.1306, 0.1309,
+    #    0.1308, 0.1316, 0.1303, 0.1300, 0.1314, 0.1303, 0.1312, 0.1299, 0.1305,
+    #    0.1299, 0.1209, 0.1186, 0.1221, 0.1096, 0.1206, 0.0469, 0.1204, 0.1184,
+    #    0.1171, 0.1179, 0.0372, 0.1005, 0.0493, 0.0994, 0.0300, 0.0300, 0.0300,
+    #    0.0300, 0.0300, 0.0300, 0.1146, 0.1198, 0.0843, 0.1222, 0.0861, 0.1205,
+    #    0.0068, 0.1215, 0.0984, 0.0394, 0.2153, 0.2476, 0.2546, 0.2559, 0.2477,
+    #    0.1281, 0.0432, 0.0671]).type(torch.FloatTensor)
+    
+    sigma_q = 0.03 * torch.ones((n_trainable_q_pts, n_dim))
+    sigma_t = 0.15 * torch.ones((n_trainable_t_pts))
+    sigma = torch.cat([sigma_q.reshape(-1), sigma_t]).type(torch.FloatTensor)
 
     #sigma = torch.tensor([-0.0191, -0.0185, -0.0189, -0.0164, -0.0190, -0.0167, -0.0174, -0.0174,
     #    -0.0192, -0.0162, -0.0151, -0.0160, -0.0169, -0.0168, -0.0135, -0.0094,
