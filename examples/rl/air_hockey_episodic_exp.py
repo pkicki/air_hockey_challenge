@@ -58,11 +58,11 @@ def experiment(env: str = '7dof-hit',
                n_epochs: int = 100000,
                n_steps: int = None,
                n_steps_per_fit: int = None,
-               n_episodes: int = 2,
-               n_episodes_per_fit: int = 2,
-               n_eval_episodes: int = 5,
+               n_episodes: int = 32,
+               n_episodes_per_fit: int = 32,
+               n_eval_episodes: int = 10,
 
-               batch_size: int = 2,
+               batch_size: int = 32,
                use_cuda: bool = False,
 
                interpolation_order: int = -1,
@@ -143,17 +143,17 @@ def experiment(env: str = '7dof-hit',
     ##agent_path = os.path.join(os.path.dirname(__file__), "trained_models/ePPO_stillsamepose_nonn_sigma_lr0.03_bs32_constrlr0.01_nep32_neppf32_neppol4_epsppo0.05_sigmainit0.1_ent0.0_seed444/7dof-hit/agent-444.msh")
     ##agent_path = os.path.join(os.path.dirname(__file__), "trained_models/ePPO_stillsamepose_nonn_lr0.03_bs32_constrlr0.01_nep32_neppf32_neppol4_epsppo0.02_sigmainit0.1_ent0.0_seed444/7dof-hit/agent-444.msh")
 
-    print("Load agent from: ", agent_path)
-    agent = Agent.load(agent_path)
-    agent.bsmp_agent.load_robot()
-    agent.bsmp_agent._optimizer = torch.optim.Adam(agent.bsmp_agent.distribution.parameters(), lr=agent_params["mu_lr"])
-    agent.bsmp_agent._epoch_no = 0
-    #agent.bsmp_agent.policy.env_info = env_info_
-    #agent.bsmp_agent.policy.optimizer = TrajectoryOptimizer(env_info_)
-    agent.bsmp_agent.policy.load_policy(env_info_)
-    agent.bsmp_agent.policy.desired_ee_z = env_info_["robot"]["ee_desired_height"]
-    agent.bsmp_agent.policy.joint_vel_limit = env_info_["robot"]["joint_vel_limit"][1] 
-    agent.bsmp_agent.policy.joint_acc_limit = env_info_["robot"]["joint_acc_limit"][1] 
+    #print("Load agent from: ", agent_path)
+    #agent = Agent.load(agent_path)
+    #agent.bsmp_agent.load_robot()
+    #agent.bsmp_agent._optimizer = torch.optim.Adam(agent.bsmp_agent.distribution.parameters(), lr=agent_params["mu_lr"])
+    #agent.bsmp_agent._epoch_no = 0
+    ##agent.bsmp_agent.policy.env_info = env_info_
+    ##agent.bsmp_agent.policy.optimizer = TrajectoryOptimizer(env_info_)
+    #agent.bsmp_agent.policy.load_policy(env_info_)
+    #agent.bsmp_agent.policy.desired_ee_z = env_info_["robot"]["ee_desired_height"]
+    #agent.bsmp_agent.policy.joint_vel_limit = env_info_["robot"]["joint_vel_limit"][1] 
+    #agent.bsmp_agent.policy.joint_acc_limit = env_info_["robot"]["joint_acc_limit"][1] 
 
     dataset_callback = CollectDataset()
     if n_envs > 1:
