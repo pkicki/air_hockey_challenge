@@ -99,7 +99,7 @@ class AirHockeyChallengeWrapper(Environment):
         success = 0
 
         if "hit" in self.env_name:
-            if puck_pos[0] - self.base_env.env_info['table']['length'] / 2 > 0 and \
+            if puck_pos[0] - (self.base_env.env_info['table']['length'] / 2 - self.base_env.env_info['puck']['radius']) > 0 and \
                     np.abs(puck_pos[1]) - self.base_env.env_info['table']['goal_width'] / 2 < 0:
                 success = 1
 

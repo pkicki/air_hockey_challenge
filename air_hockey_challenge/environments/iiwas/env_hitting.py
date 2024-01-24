@@ -180,7 +180,7 @@ class AirHockeyHit(AirHockeyDouble):
             self.absorb_type = AbsorbType.BOTTOM
             return True
 
-        if puck_pos[0] > 2.43 or (puck_pos[0] > 2.39 and puck_vel[0] < 0):
+        if puck_pos[0] > 2.46 or (puck_pos[0] > 2.39 and puck_vel[0] < 0):
             self.absorb_type = AbsorbType.UP
             if abs(puck_pos[1]) < 0.1:
                 self.absorb_type = AbsorbType.GOAL
