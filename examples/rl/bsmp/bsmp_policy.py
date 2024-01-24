@@ -43,8 +43,11 @@ class BSMPPolicy(Policy):
         self._traj_no = 0
         self._robot_constraints = robot_constraints
 
-        self.env_info = env_info
-        self.optimizer = TrajectoryOptimizer(self.env_info)
+        self.desired_ee_z = env_info['robot']['ee_desired_height']
+        self.joint_vel_limit = env_info['robot']['joint_vel_limit'][1]
+        self.joint_acc_limit = env_info['robot']['joint_acc_limit'][1]
+        self.optimizer = None
+        self.load_policy(env_info)
 
         policy_state_shape = (1,)
         super().__init__(policy_state_shape)
@@ -66,9 +69,13 @@ class BSMPPolicy(Policy):
             _qd1='primitive',
             _td1='primitive',
             _traj_no='primitive',
-            env_info='pickle',
-            optimizer='pickle'
+            desired_ee_z='primitive',
+            joint_vel_limit='pickle',
+            joint_acc_limit='pickle',
         )
+
+    def load_policy(self, env_info):
+        self.optimizer = TrajectoryOptimizer(env_info)
 
     def unpack_context(self, context):
         if context is None:
@@ -134,12 +141,12 @@ class BSMPPolicy(Policy):
         #trainable_q_cps = torch.tanh(trainable_q_cps/10.) * np.pi
         middle_trainable_q_pts = torch.tanh(trainable_q_cps[:, :-3]/10.) * np.pi
         trainable_q_d = torch.tanh(trainable_q_cps[:, -1:]/10.) * np.pi
-        trainable_q_ddot_d = torch.tanh(trainable_q_cps[:, -3:-2]) * torch.tensor(self.env_info['robot']['joint_acc_limit'][1])
+        trainable_q_ddot_d = torch.tanh(trainable_q_cps[:, -3:-2]) * torch.tensor(self.joint_acc_limit)
         trainable_delta_angle = torch.tanh(trainable_q_cps[:, -2:-1, -1]/10.) * np.pi/2.
         trainable_scale = torch.sigmoid(trainable_q_cps[:, -2, -2])[:, None, None]
 
 
-        x_cur = forward_kinematics(self.env_info['robot']['robot_model'], self.env_info['robot']['robot_data'], q_0[0, 0])[0]
+        #x_cur = forward_kinematics(self.env_info['robot']['robot_model'], self.env_info['robot']['robot_data'], q_0[0, 0])[0]
 
         puck_pos = puck.detach().numpy()
         goal = np.array([2.484, 0., 0.])
@@ -153,7 +160,7 @@ class BSMPPolicy(Policy):
 
         #x_des = puck_pos - (self.env_info['mallet']['radius'] + self.env_info['puck']['radius']) * v_des
         x_des = puck_pos# - (self.env_info['mallet']['radius'] + self.env_info['puck']['radius'] - 0.01) * v_des
-        x_des[:, -1] = self.env_info['robot']['ee_desired_height'] - 0.03# - self.env_info['robot']['universal_height']
+        x_des[:, -1] = self.desired_ee_z - 0.03# - self.env_info['robot']['universal_height']
 
         q_d_s = []
         for k in range(q_0.shape[0]):
@@ -166,7 +173,7 @@ class BSMPPolicy(Policy):
             q_dot_d = (torch.linalg.pinv(torch.tensor(self.optimizer.jacobian(q_d.detach().numpy()[k, 0])))[:, :3] @ v_des.T)[..., 0]
             q_dot_d_s.append(q_dot_d)
         q_dot_d_bias = torch.stack(q_dot_d_s, dim=0)[:, None]
-        scale = 1. / torch.max(torch.abs(q_dot_d_bias) / torch.tensor(self.env_info['robot']['joint_vel_limit'][1]), axis=-1, keepdim=True)[0]
+        scale = 1. / torch.max(torch.abs(q_dot_d_bias) / torch.tensor(self.joint_vel_limit), axis=-1, keepdim=True)[0]
         q_dot_d = q_dot_d_bias * scale * trainable_scale
         #q_d = trainable_q_cps[:, -1:] + q_d_bias
         #q_dot_d = trainable_q_cps[:, -2:-1] + q_dot_d_bias
@@ -183,6 +190,8 @@ class BSMPPolicy(Policy):
         q_end = [q_d, qm1, qm2]
         #q_cps = torch.cat(q_begin[:self._n_pts_fixed_begin] + [q_0 + torch.pi * trainable_q_cps] + q_end[::-1], axis=-2)
 
+        #s = torch.linspace(0., 1., middle_trainable_q_pts.shape[1]+2)[None, 1:-1, None]
+        #q_b = qm2 * (1 - s) + qm1 * s
         s = torch.linspace(0., 1., middle_trainable_q_pts.shape[1]+6)[None, 3:-3, None]
         q_b = q_0 * (1 - s) + q_d * s
         q_cps = torch.cat(q_begin[:self._n_pts_fixed_begin] + [q_b + middle_trainable_q_pts] + q_end[::-1], axis=-2)

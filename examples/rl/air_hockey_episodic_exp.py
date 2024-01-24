@@ -17,7 +17,7 @@ from examples.rl.bsmp.bspline import BSpline
 from examples.rl.bsmp.bspline_timeoptimal_approximator import BSplineFastApproximatorAirHockeyWrapper
 from examples.rl.bsmp.context_builder import IdentityContextBuilder
 from examples.rl.bsmp.network import ConfigurationTimeNetwork, ConfigurationTimeNetworkWrapper, LogSigmaNetworkWrapper
-from examples.rl.bsmp.utils import unpack_data_airhockey
+from examples.rl.bsmp.utils import equality_loss, limit_loss, unpack_data_airhockey
 from examples.rl.bsmp.value_network import ValueNetwork
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
@@ -43,6 +43,8 @@ from mushroom_rl.rl_utils.optimizers import AdaptiveOptimizer
 from mushroom_rl.distributions import DiagonalGaussianTorchDistribution, CholeskyGaussianTorchDistribution
 from mushroom_rl.environments.mujoco_envs.air_hockey import AirHockeyHit
 
+import matplotlib.pyplot as plt
+
 def custom_repr(self):
     return f'{{Tensor:{tuple(self.shape)}}} {original_repr(self)}'
 
@@ -56,11 +58,11 @@ def experiment(env: str = '7dof-hit',
                n_epochs: int = 100000,
                n_steps: int = None,
                n_steps_per_fit: int = None,
-               n_episodes: int = 32,
-               n_episodes_per_fit: int = 32,
-               n_eval_episodes: int = 10,
+               n_episodes: int = 2,
+               n_episodes_per_fit: int = 2,
+               n_eval_episodes: int = 5,
 
-               batch_size: int = 32,
+               batch_size: int = 2,
                use_cuda: bool = False,
 
                interpolation_order: int = -1,
@@ -131,7 +133,8 @@ def experiment(env: str = '7dof-hit',
     env, env_info_ = env_builder(env, n_envs, env_params)
 
     agent = agent_builder(env_info_, agent_params)
-    agent_path = os.path.join(os.path.dirname(__file__), "trained_models/ePPO_puckcenter_newreward_differentscaling10_biased_hor150_onlydistnogerhashitonlyclean_initsigmaddq1nn_tarm99lr1em4init3em3_lr5e-05_valuelr0.0005_bs32_constrlr0.01_nep32_neppf32_neppol32_epsppo0.02_sigmainit0.1_ent0.001_nqcps11_ntcps10_seed444/agent-444-750.msh")
+    agent_path = os.path.join(os.path.dirname(__file__), "trained_models/ePPO_verynewreward_puckcenter_defaulttime07s_stillrandompose_initsigmaq003t015nn_SACentropytarm99lr1em4init3em3_lr5e-05_valuelr0.0005_bs32_constrlr0.01_nep32_neppf32_neppol32_epsppo0.02_sigmainit0.1_ent0.0_seed444/agent-444-425.msh")
+    #agent_path = os.path.join(os.path.dirname(__file__), "trained_models/ePPO_puckcenter_newreward_differentscaling10_biased_hor150_onlydistnogerhashitonlyclean_initsigmaddq1nn_tarm99lr1em4init3em3_lr5e-05_valuelr0.0005_bs32_constrlr0.01_nep32_neppf32_neppol32_epsppo0.02_sigmainit0.1_ent0.001_nqcps11_ntcps10_seed444/agent-444-750.msh")
     #agent_path = os.path.join(os.path.dirname(__file__), "trained_models/ePPO_stillrandompose_initsigma02nn_nobigsigma_nn_SACentropytest_tarm33lr1em3init2em3_lr5e-05_valuelr0.0005_bs32_constrlr0.01_nep32_neppf32_neppol32_epsppo0.02_sigmainit0.1_ent0.0_seed444/agent-444-2745.msh")
     #agent_path = os.path.join(os.path.dirname(__file__), "trained_models/ePPO_stillrandompose_initsigma02nn_nobigsigma_nn_lr5e-05_valuelr0.0005_bs64_constrlr0.01_nep64_neppf64_neppol32_epsppo0.02_sigmainit0.1_ent0.001_seed444/7dof-hit/agent-444-681.msh")
     #agent_path = os.path.join(os.path.dirname(__file__), "logs/444/ePPO_stillrandompose_nn_lr5e-05_bs32_constrlr0.01_nep32_neppf32_neppol32_epsppo0.05_sigmainit0.1_ent0.0_seed444/7dof-hit/agent-444.msh")
@@ -140,13 +143,17 @@ def experiment(env: str = '7dof-hit',
     ##agent_path = os.path.join(os.path.dirname(__file__), "trained_models/ePPO_stillsamepose_nonn_sigma_lr0.03_bs32_constrlr0.01_nep32_neppf32_neppol4_epsppo0.05_sigmainit0.1_ent0.0_seed444/7dof-hit/agent-444.msh")
     ##agent_path = os.path.join(os.path.dirname(__file__), "trained_models/ePPO_stillsamepose_nonn_lr0.03_bs32_constrlr0.01_nep32_neppf32_neppol4_epsppo0.02_sigmainit0.1_ent0.0_seed444/7dof-hit/agent-444.msh")
 
-    #print("Load agent from: ", agent_path)
-    #agent = Agent.load(agent_path)
-    #agent.bsmp_agent.load_robot()
-    #agent.bsmp_agent._optimizer = torch.optim.Adam(agent.bsmp_agent.distribution.parameters(), lr=agent_params["mu_lr"])
-    #agent.bsmp_agent._epoch_no = 0
+    print("Load agent from: ", agent_path)
+    agent = Agent.load(agent_path)
+    agent.bsmp_agent.load_robot()
+    agent.bsmp_agent._optimizer = torch.optim.Adam(agent.bsmp_agent.distribution.parameters(), lr=agent_params["mu_lr"])
+    agent.bsmp_agent._epoch_no = 0
     #agent.bsmp_agent.policy.env_info = env_info_
     #agent.bsmp_agent.policy.optimizer = TrajectoryOptimizer(env_info_)
+    agent.bsmp_agent.policy.load_policy(env_info_)
+    agent.bsmp_agent.policy.desired_ee_z = env_info_["robot"]["ee_desired_height"]
+    agent.bsmp_agent.policy.joint_vel_limit = env_info_["robot"]["joint_vel_limit"][1] 
+    agent.bsmp_agent.policy.joint_acc_limit = env_info_["robot"]["joint_acc_limit"][1] 
 
     dataset_callback = CollectDataset()
     if n_envs > 1:
@@ -190,6 +197,7 @@ def experiment(env: str = '7dof-hit',
             constraints_violation_sto_max = np.zeros(18)
             constraints_violation_det_mean = np.zeros(18)
             constraints_violation_det_max = np.zeros(18)
+            mean_duration = 0.
 
         # Evaluate
         J_det, R, success, c_avg, c_max, states, actions = compute_metrics(core, eval_params)
@@ -239,9 +247,9 @@ def experiment(env: str = '7dof-hit',
             best_J_det = J_det
             logger.log_agent(agent, epoch=epoch)
 
-        if best_J_sto <= J_sto:
-            best_J_sto = J_sto
-            logger.log_agent(agent, epoch=epoch)
+        #if best_J_sto <= J_sto:
+        #    best_J_sto = J_sto
+        #    logger.log_agent(agent, epoch=epoch)
 
     #agent = Agent.load(os.path.join(logger.path, f"agent-{seed}.msh"))
 
@@ -541,6 +549,57 @@ def compute_metrics(core, eval_params):
     #state = state.reshape(dataset.n_episodes, int(state.shape[0] / dataset.n_episodes), state.shape[1])
     action = dataset.action
     #action = action.reshape(dataset.n_episodes, int(action.shape[0] / dataset.n_episodes), 2, 7).transpose(0, 1, 3, 2)
+    #puck, puck_dot, q, _, q_dot, _, q_ddot, _, _ = unpack_data_airhockey(state)
+    #ee_pos, ee_rot = core.agent.bsmp_agent.compute_forward_kinematics(torch.tensor(q[None]), torch.tensor(q_dot[None]))
+    #ee_pos = ee_pos.detach().numpy()[0]
+    #ee_rot = ee_rot.detach().numpy()[0]
+    #q_d = action[..., :7]
+    #q_dot_d = action[..., 7:]
+    #ee_pos_d, ee_rot_d = core.agent.bsmp_agent.compute_forward_kinematics(torch.tensor(q_d[None]), torch.tensor(q_dot_d[None]))
+    #ee_pos_d = ee_pos_d.detach().numpy()[0]
+    #ee_rot_d = ee_rot_d.detach().numpy()[0]
+
+    #q_dot_l = core.agent.bsmp_agent.robot_constraints['q_dot']
+    #q_ddot_l = core.agent.bsmp_agent.robot_constraints['q_ddot']
+    #q_dot_ = torch.tensor(q_dot)
+    #q_ddot_ = torch.tensor(q_ddot)
+    #ee_pos_ = torch.tensor(ee_pos)
+    #q_dot_l_ = torch.tensor(q_dot_l)[None]
+    #q_ddot_l_ = torch.tensor(q_ddot_l)[None]
+    #dt = core.agent.bsmp_agent.policy.dt * torch.ones(q_dot_.shape[0], 1)
+    #q_dot_loss = limit_loss(torch.abs(q_dot_), dt, q_dot_l_)
+    #q_ddot_loss = limit_loss(torch.abs(q_ddot_), dt, q_ddot_l_)
+
+    #x_ee_loss_low = limit_loss(core.agent.bsmp_agent.robot_constraints["x_ee_lb"], dt, ee_pos_[..., 0])
+    #y_ee_loss_low = limit_loss(core.agent.bsmp_agent.robot_constraints["y_ee_lb"], dt, ee_pos_[..., 1])
+    #y_ee_loss_high = limit_loss(ee_pos_[..., 1], dt, core.agent.bsmp_agent.robot_constraints["y_ee_ub"])
+    #z_ee_loss = equality_loss(ee_pos_[..., 2], dt, core.agent.bsmp_agent.robot_constraints["z_ee"])
+    #plt.subplot(211)
+    #plt.plot(ee_pos[:, 0], ee_pos[:, 1], label="actual")
+    #plt.plot(ee_pos_d[:, 0], ee_pos_d[:, 1], label="desired")
+    #plt.subplot(212)
+    #plt.plot(ee_pos[:, 2], label="actual")
+    #plt.plot(ee_pos_d[:, 2], label="desired")
+    #plt.legend()
+    #plt.show()
+    #for i in range(q.shape[-1]):
+    #    plt.subplot(3, 7, 1+i)
+    #    plt.plot(q[:, i], label="actual")
+    #    plt.plot(q_d[:, i], label="desired")
+    #for i in range(q.shape[-1]):
+    #    plt.subplot(3, 7, 1+i+7)
+    #    plt.plot(q_dot[:, i], label="actual")
+    #    plt.plot(q_dot_d[:, i], label="desired")
+    #    plt.plot(q_dot_l[i] * np.ones_like(q_dot[:, i]), label="limit")
+    #    plt.plot(-q_dot_l[i] * np.ones_like(q_dot[:, i]), label="limit")
+    #for i in range(q.shape[-1]):
+    #    plt.subplot(3, 7, 1+i+14)
+    #    plt.plot(q_ddot[:, i], label="actual")
+    #    plt.plot(q_ddot_l[i] * np.ones_like(q_ddot[:, i]), label="limit")
+    #    plt.plot(-q_ddot_l[i] * np.ones_like(q_ddot[:, i]), label="limit")
+    #plt.legend()
+    #plt.show()
+
     return J, R, success, c_avg, c_max, state, action
 
 

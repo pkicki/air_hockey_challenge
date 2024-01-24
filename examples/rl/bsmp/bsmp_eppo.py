@@ -74,6 +74,7 @@ class BSMPePPO(ePPO):
             _log_entropy_bonus='torch',
             _entropy_optimizer='torch',
             _target_entropy='primitive',
+            _epoch_no='primitive',
         )
 
     def episode_start(self, initial_state, episode_info):
