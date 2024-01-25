@@ -202,6 +202,11 @@ class BSMPPolicy(Policy):
 
         #q_cps = torch.cat(q_begin[:self._n_pts_fixed_begin] + [q_0 + torch.pi * trainable_q_cps] + q_end[:self._n_pts_fixed_end][::-1], axis=-2)
         q, q_dot, q_ddot, t, dt, duration = self.compute_trajectory(q_cps.to(torch.float32), trainable_t_cps.to(torch.float32), differentiable=True)
+        q_dot_scale = (torch.abs(q_dot) / torch.tensor(self.joint_vel_limit)).max()
+        q_ddot_scale = (torch.abs(q_ddot) / torch.tensor(self.joint_acc_limit)).max()
+        scale = torch.maximum(q_dot_scale, q_ddot_scale**(1./2))
+        trainable_t_cps -= torch.log(scale)
+        q, q_dot, q_ddot, t, dt, duration = self.compute_trajectory(q_cps.to(torch.float32), trainable_t_cps.to(torch.float32), differentiable=True)
         self._traj_no += 1
         return q, q_dot, q_ddot, t, dt, duration
 

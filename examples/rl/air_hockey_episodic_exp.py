@@ -103,7 +103,7 @@ def experiment(env: str = '7dof-hit',
         initial_entropy_bonus=kwargs["initial_entropy_bonus"] if 'initial_entropy_bonus' in kwargs.keys() else 3e-3,
     )
 
-    name = f"""ePPO_take2_newreward_differentscaling10_biased_hor150_onlydistnogerhashitonlyclean_initsigmaddq1nn_tarm99lr1em4init3em3_lr{agent_params['mu_lr']}_valuelr{agent_params['value_lr']}_bs{batch_size}_constrlr{agent_params['constraint_lr']}_nep{n_episodes}_neppf{n_episodes_per_fit}_neppol{agent_params['n_epochs_policy']}_epsppo{agent_params['eps_ppo']}_sigmainit{agent_params['sigma_init']}_ent{agent_params['ent_coeff']}_nqcps{agent_params['n_q_cps']}_ntcps{agent_params['n_t_cps']}_seed{seed}"""
+    name = f"""ePPO_dqddqscaling_verynewrewardnormv_hor150_initsigmaq01t015_tarm99lr1em4init3em3_lr{agent_params['mu_lr']}_valuelr{agent_params['value_lr']}_bs{batch_size}_constrlr{agent_params['constraint_lr']}_nep{n_episodes}_neppf{n_episodes_per_fit}_neppol{agent_params['n_epochs_policy']}_epsppo{agent_params['eps_ppo']}_sigmainit{agent_params['sigma_init']}_ent{agent_params['ent_coeff']}_nqcps{agent_params['n_q_cps']}_ntcps{agent_params['n_t_cps']}_seed{seed}"""
 
     results_dir = os.path.join(results_dir, name)
 
@@ -112,8 +112,8 @@ def experiment(env: str = '7dof-hit',
     if use_cuda:
         TorchUtils.set_default_device('cuda')
 
-    #wandb_run = wandb.init(project="air_hockey_challenge_fullrange_still", config={}, dir=results_dir, name=name,
-    #          group=f'{env}_{alg}_ePPO_newreward_undiscounted', tags=[str(env)])
+    wandb_run = wandb.init(project="air_hockey_challenge_fullrange_still", config={}, dir=results_dir, name=name,
+              group=f'{env}_{alg}_ePPO_verynewreward_dqddqscaling_undiscounted', tags=[str(env)])
 
     eval_params = dict(
         n_episodes=n_eval_episodes,
@@ -389,7 +389,7 @@ def build_agent_BSMPePPO(env_info, **agent_params):
     #    0.0068, 0.1215, 0.0984, 0.0394, 0.2153, 0.2476, 0.2546, 0.2559, 0.2477,
     #    0.1281, 0.0432, 0.0671]).type(torch.FloatTensor)
     
-    sigma_q = 0.03 * torch.ones((n_trainable_q_pts, n_dim))
+    sigma_q = 0.1 * torch.ones((n_trainable_q_pts, n_dim))
     sigma_t = 0.15 * torch.ones((n_trainable_t_pts))
     sigma = torch.cat([sigma_q.reshape(-1), sigma_t]).type(torch.FloatTensor)
 
