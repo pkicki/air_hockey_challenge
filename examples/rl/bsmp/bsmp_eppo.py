@@ -78,8 +78,8 @@ class BSMPePPO(ePPO):
         )
 
     def episode_start(self, initial_state, episode_info):
-        policy_state, theta = super().episode_start(initial_state, episode_info)
-        return self.policy.reset(initial_state), theta
+        _, theta = super().episode_start(initial_state, episode_info)
+        return self._convert_to_env_backend(self.policy.reset(initial_state)), theta
         #return self.policy.reset(initial_state), theta[0]
 
     def load_robot(self):

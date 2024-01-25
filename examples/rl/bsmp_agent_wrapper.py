@@ -7,7 +7,7 @@ class BSMPAgent(AgentBase):
     def __init__(self, env_info, bsmp_agent: Agent):
         self.env_info = env_info
         self.bsmp_agent = bsmp_agent
-        super().__init__(env_info, is_episodic=True)
+        super().__init__(env_info, bsmp_agent.policy, is_episodic=True)
 
         self._add_save_attr(
             bsmp_agent='mushroom',

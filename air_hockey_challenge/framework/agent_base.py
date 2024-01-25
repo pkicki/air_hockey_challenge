@@ -6,7 +6,7 @@ from mushroom_rl.policy.policy import Policy
 
 
 class AgentBase(Agent):
-    def __init__(self, env_info, is_episodic=False, agent_id=1, **kwargs):
+    def __init__(self, env_info, policy=Policy(), is_episodic=False, agent_id=1, **kwargs):
         """
         Initialization of the Agent.
 
@@ -18,7 +18,7 @@ class AgentBase(Agent):
             agent_id [int, default 1]:
                 1 by default, agent_id will be used for the tournament;
         """
-        super().__init__(env_info['rl_info'], Policy(), is_episodic=is_episodic)
+        super().__init__(env_info['rl_info'], policy, is_episodic=is_episodic)
         self.env_info = env_info
         self.agent_id = agent_id
         self.robot_model = copy.deepcopy(env_info['robot']['robot_model'])
