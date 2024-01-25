@@ -72,8 +72,8 @@ def experiment(env: str = '7dof-hit',
                debug: bool = False,
                seed: int = 444,
                quiet: bool = True,
-               render: bool = True,
-               #render: bool = False,
+               #render: bool = True,
+               render: bool = False,
                results_dir: str = './logs',
                **kwargs):
     np.random.seed(seed)
