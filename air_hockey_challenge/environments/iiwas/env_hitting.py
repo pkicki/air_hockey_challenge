@@ -149,8 +149,8 @@ class AirHockeyHit(AirHockeyDouble):
                 dist_ee_puck = np.linalg.norm(puck_pos[:2] - ee_pos)
                 r = - dist_ee_puck
             else:
-                #v = np.linalg.norm(puck_vel[:2])
-                v = np.sum(np.square(puck_vel[:2]))
+                #v = np.sum(np.square(puck_vel[:2]))
+                v = np.linalg.norm(puck_vel[:2])
 
                 if puck_vel[0] > 0.:
                     time2goalx = (goal[0] - puck_pos[0]) / (puck_vel[0] + 1e-8)
@@ -161,7 +161,6 @@ class AirHockeyHit(AirHockeyDouble):
                 else:
                     # TODO think what if the puck goes wrong direction
                     r = puck_vel[0]
-            #r *= self.info.dt
         return r
 
     #def is_absorbing(self, obs):
