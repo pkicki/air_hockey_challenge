@@ -1,7 +1,7 @@
 from copy import copy
 import os
 from time import perf_counter
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 import torch
 import numpy as np
@@ -248,28 +248,28 @@ class BSMPePPO(ePPO):
             self._t = t_
             self._ee_pos = ee_pos
 
-            plt.subplot(121)
-            plt.plot(ee_pos[0, :, 0], ee_pos[0, :, 1])
-            plt.plot(context[0, 0], context[0, 1], 'ro')
-            plt.subplot(122)
-            plt.plot(t_, ee_pos[0, :, 2])
-            plt.savefig(os.path.join(os.path.dirname(__file__), "..", f"imgs/xyz_{self._epoch_no}.png"))
-            plt.clf()
+            #plt.subplot(121)
+            #plt.plot(ee_pos[0, :, 0], ee_pos[0, :, 1])
+            #plt.plot(context[0, 0], context[0, 1], 'ro')
+            #plt.subplot(122)
+            #plt.plot(t_, ee_pos[0, :, 2])
+            #plt.savefig(os.path.join(os.path.dirname(__file__), "..", f"imgs/xyz_{self._epoch_no}.png"))
+            #plt.clf()
 
-            n_dim = 7
-            for i in range(n_dim):
-                plt.subplot(3, 7, 1+i)
-                plt.plot(t_, q_[:, i])
-                plt.subplot(3, 7, 1+i+n_dim)
-                plt.plot(t_, q_dot_[:, i])
-                plt.plot([t_[0], t_[-1]], [qdl[i], qdl[i]], 'r--')
-                plt.plot([t_[0], t_[-1]], [-qdl[i], -qdl[i]], 'r--')
-                plt.subplot(3, 7, 1+i+2*n_dim)
-                plt.plot(t_, q_ddot_[:, i])
-                plt.plot([t_[0], t_[-1]], [qddl[i], qddl[i]], 'r--')
-                plt.plot([t_[0], t_[-1]], [-qddl[i], -qddl[i]], 'r--')
-            plt.savefig(os.path.join(os.path.dirname(__file__), "..", f"imgs/mean_traj_{self._epoch_no}.png"))
-            plt.clf()
+            #n_dim = 7
+            #for i in range(n_dim):
+            #    plt.subplot(3, 7, 1+i)
+            #    plt.plot(t_, q_[:, i])
+            #    plt.subplot(3, 7, 1+i+n_dim)
+            #    plt.plot(t_, q_dot_[:, i])
+            #    plt.plot([t_[0], t_[-1]], [qdl[i], qdl[i]], 'r--')
+            #    plt.plot([t_[0], t_[-1]], [-qdl[i], -qdl[i]], 'r--')
+            #    plt.subplot(3, 7, 1+i+2*n_dim)
+            #    plt.plot(t_, q_ddot_[:, i])
+            #    plt.plot([t_[0], t_[-1]], [qddl[i], qddl[i]], 'r--')
+            #    plt.plot([t_[0], t_[-1]], [-qddl[i], -qddl[i]], 'r--')
+            #plt.savefig(os.path.join(os.path.dirname(__file__), "..", f"imgs/mean_traj_{self._epoch_no}.png"))
+            #plt.clf()
 
             #prob_ratios = torch.stack(prob_ratios, dim=0)
             #prob_ratios = prob_ratios.sort(dim=1)[0]
