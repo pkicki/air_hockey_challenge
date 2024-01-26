@@ -101,13 +101,14 @@ def experiment(env: str = '7dof-hit',
         target_entropy=kwargs["target_entropy"] if 'target_entropy' in kwargs.keys() else -99.,
         entropy_lr=kwargs["entropy_lr"] if 'entropy_lr' in kwargs.keys() else 1e-4,
         initial_entropy_bonus=kwargs["initial_entropy_bonus"] if 'initial_entropy_bonus' in kwargs.keys() else 3e-3,
+        entropy_lb=kwargs["entropy_lb"] if 'entropy_lb' in kwargs.keys() else -99,
     )
 
-    name = (f"ePPO_dqddqscaling_verynewrewardnormvminus1_hor150_initsigmaq01t015_tarm99lr1em4init3em3_"
+    name = (f"ePPO_verynewrewardnormv_hor150_initsigmaq01t015_"
             f"lr{agent_params['mu_lr']}_valuelr{agent_params['value_lr']}_bs{batch_size}_"
             f"constrlr{agent_params['constraint_lr']}_nep{n_episodes}_neppf{n_episodes_per_fit}_"
             f"neppol{agent_params['n_epochs_policy']}_epsppo{agent_params['eps_ppo']}_"
-            f"sigmainit{agent_params['sigma_init']}_ent{agent_params['ent_coeff']}_"
+            f"sigmainit{agent_params['sigma_init']}_ent_lb{agent_params['entropy_lb']}_"
             f"nqcps{agent_params['n_q_cps']}_ntcps{agent_params['n_t_cps']}_seed{seed}")
 
     results_dir = os.path.join(results_dir, name)
@@ -486,7 +487,7 @@ def build_agent_BSMPePPO(env_info, **agent_params):
 
     #dist = DiagonalGaussianTorchDistribution(mu, sigma)
     #dist = DiagonalGaussianBSMPDistribution(mu_approximator, sigma)
-    dist = DiagonalGaussianBSMPSigmaDistribution(mu_approximator, log_sigma_approximator)
+    dist = DiagonalGaussianBSMPSigmaDistribution(mu_approximator, log_sigma_approximator, agent_params["entropy_lb"])
     #entropy_weights = torch.tensor([1e0, 1e0, 1e0, 1e0, 1e0])
     #splits = [(n_trainable_q_pts - 3) * n_dim, (n_trainable_q_pts - 2) * n_dim, (n_trainable_q_pts - 1) * n_dim, n_trainable_q_pts * n_dim]
     #dist = DiagonalMultiGaussianBSMPSigmaDistribution(mu_approximator, log_sigma_approximator, entropy_weights, splits)

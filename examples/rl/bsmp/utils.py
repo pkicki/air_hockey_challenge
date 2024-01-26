@@ -46,3 +46,13 @@ def unpack_data_obstacles2D(x):
     dxyk = x[..., 6:8]
     obstacles = x[..., 8:38]
     return xy0, xyk, dxy0, dxyk, obstacles
+    
+def project_entropy(chol, e_lb):
+    def entropy(chol):
+        a_dim = chol.size()[-1]
+        return a_dim / 2 * np.log(2 * np.pi * np.e) + torch.sum(torch.log(torch.diagonal(chol, dim1=-2, dim2=-1)))
+    ent = entropy(chol)
+    if ent < e_lb:
+        a_dim = chol.size()[-1]
+        chol = chol * torch.exp((e_lb - ent) / a_dim)
+    return chol
