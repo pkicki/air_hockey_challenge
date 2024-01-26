@@ -5,6 +5,7 @@ from mushroom_rl.distributions import AbstractGaussianTorchDistribution
 from mushroom_rl.utils.torch import TorchUtils
 
 from examples.rl.bsmp.multinormal_distribution import MultiNormalDistribution
+from examples.rl.bsmp.utils import project_entropy
 
 
 class DiagonalGaussianBSMPDistribution(AbstractGaussianTorchDistribution):
@@ -120,15 +121,17 @@ class DiagonalGaussianBSMPSigmaDistribution(AbstractGaussianTorchDistribution):
         return mu, torch.diag_embed(torch.exp(log_sigma), dim1=-2, dim2=-1)
 
 class DiagonalGaussianBSMPSigmaDistribution(AbstractGaussianTorchDistribution):
-    def __init__(self, mu_approximator, log_sigma_approximator):
+    def __init__(self, mu_approximator, log_sigma_approximator, e_lb=None):
         self._mu_approximator = mu_approximator
         self._log_sigma_approximator = log_sigma_approximator
+        self._e_lb = e_lb
 
         super().__init__(context_shape=self._mu_approximator.input_shape)
 
         self._add_save_attr(
             _mu_approximator='torch',
-            _log_sigma_approximator='torch'
+            _log_sigma_approximator='torch',
+            _e_lb='primitive',
         )
 
     def parameters(self):
@@ -157,7 +160,10 @@ class DiagonalGaussianBSMPSigmaDistribution(AbstractGaussianTorchDistribution):
     def _get_mean_and_chol(self, context):
         mu = self.estimate_mu(context)
         log_sigma = self.estimate_log_sigma(context)
-        return mu, torch.diag_embed(torch.exp(log_sigma), dim1=-2, dim2=-1)
+        chol = torch.diag_embed(torch.exp(log_sigma), dim1=-2, dim2=-1)
+        if self._e_lb is not None:
+            chol = project_entropy(chol, self._e_lb)
+        return mu, chol
 
 
 class DiagonalMultiGaussianBSMPSigmaDistribution(AbstractGaussianTorchDistribution):
