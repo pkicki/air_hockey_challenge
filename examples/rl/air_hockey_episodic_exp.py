@@ -103,7 +103,12 @@ def experiment(env: str = '7dof-hit',
         initial_entropy_bonus=kwargs["initial_entropy_bonus"] if 'initial_entropy_bonus' in kwargs.keys() else 3e-3,
     )
 
-    name = f"""ePPO_dqddqscaling_verynewrewardnormv_hor150_initsigmaq01t015_tarm99lr1em4init3em3_lr{agent_params['mu_lr']}_valuelr{agent_params['value_lr']}_bs{batch_size}_constrlr{agent_params['constraint_lr']}_nep{n_episodes}_neppf{n_episodes_per_fit}_neppol{agent_params['n_epochs_policy']}_epsppo{agent_params['eps_ppo']}_sigmainit{agent_params['sigma_init']}_ent{agent_params['ent_coeff']}_nqcps{agent_params['n_q_cps']}_ntcps{agent_params['n_t_cps']}_seed{seed}"""
+    name = (f"ePPO_dqddqscaling_verynewrewardnormvminus1_hor150_initsigmaq01t015_tarm99lr1em4init3em3_"
+            f"lr{agent_params['mu_lr']}_valuelr{agent_params['value_lr']}_bs{batch_size}_"
+            f"constrlr{agent_params['constraint_lr']}_nep{n_episodes}_neppf{n_episodes_per_fit}_"
+            f"neppol{agent_params['n_epochs_policy']}_epsppo{agent_params['eps_ppo']}_"
+            f"sigmainit{agent_params['sigma_init']}_ent{agent_params['ent_coeff']}_"
+            f"nqcps{agent_params['n_q_cps']}_ntcps{agent_params['n_t_cps']}_seed{seed}")
 
     results_dir = os.path.join(results_dir, name)
 
