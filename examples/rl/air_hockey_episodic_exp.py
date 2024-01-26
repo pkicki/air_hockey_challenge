@@ -222,7 +222,8 @@ def experiment(env: str = '7dof-hit',
                           c_max=np.max(np.concatenate(list(c_max.values()))))
         wandb.log({
             "Reward/": {"J_det": J_det, "J_sto": J_sto, "V_sto": V_sto, "VJ_bias": VJ_bias, "R": R, "success": success},
-            "Entropy/": {"E": E, "entropy_bonus": core.agent.bsmp_agent._log_entropy_bonus.exp().detach().numpy()},
+            #"Entropy/": {"E": E, "entropy_bonus": core.agent.bsmp_agent._log_entropy_bonus.exp().detach().numpy()},
+            "Entropy/": {"E": E},
             "Constraints_sto/": {"avg/": {str(i): a for i, a in enumerate(constraints_violation_sto_mean)},
                                  "max/": {str(i): a for i, a in enumerate(constraints_violation_sto_max)}},
             "Constraints_det/": {"avg/": {str(i): a for i, a in enumerate(constraints_violation_det_mean)},

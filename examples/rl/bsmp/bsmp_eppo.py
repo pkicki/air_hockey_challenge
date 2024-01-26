@@ -205,7 +205,7 @@ class BSMPePPO(ePPO):
                 A_unbiased = A - mean_advantage
                 loss = -torch.mean(torch.min(prob_ratio * A_unbiased, clipped_ratio * A_unbiased))
                 #loss -= torch.mean(self._ent_coeff() * self.distribution.entropy(context_i))
-                loss -= torch.mean(self._log_entropy_bonus.exp() * self.distribution.entropy(context_i))
+                #loss -= torch.mean(self._log_entropy_bonus.exp() * self.distribution.entropy(context_i))
 
                 # constraint loss
                 mu = self.distribution.estimate_mu(context_i)
@@ -226,7 +226,7 @@ class BSMPePPO(ePPO):
                 value_loss.backward()
                 self.value_function_optimizer.step()
             self.update_alphas()
-            self.update_entropy_bonus(self.distribution.log_pdf(theta, context))
+            #self.update_entropy_bonus(self.distribution.log_pdf(theta, context))
             self._epoch_no += 1
             #mu = self.distribution._mu
         with torch.no_grad():
