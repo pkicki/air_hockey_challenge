@@ -205,26 +205,13 @@ class BSMPPolicy(Policy):
         #trainable_t_cps = torch.tile(trainable_t_cps, (16, 1, 1))
         #trainable_t_cps += torch.randn_like(trainable_t_cps) * 0.15
         q, q_dot, q_ddot, t, dt, duration = self.compute_trajectory(q_cps.to(torch.float32), trainable_t_cps.to(torch.float32), differentiable=True)
-        #vscale = (torch.abs(q_dot) / torch.tensor(self.joint_vel_limit))
-        ##vscale_max = vscale.max()
-        #vscale_max = vscale.max(-1)[0].max(-1)[0]
-        #trainable_t_cps -= torch.log(vscale.max())
-        #q_, q_dot_, q_ddot_, t_, dt_, duration_ = self.compute_trajectory(q_cps.to(torch.float32), trainable_t_cps.to(torch.float32), differentiable=True)
-        #vscale_ = (torch.abs(q_dot_) / torch.tensor(self.joint_vel_limit))
-        #vscale_max_ = vscale_.max(-1)[0].max(-1)[0]
-        #colors = ['r', 'g', 'b', 'c', 'm', 'y', 'k']
-        #for i in range(7):
-        #    plt.plot(vscale[0, :, i].detach().numpy(), colors[i], label=f"joint {i}")
-        #    plt.plot(vscale_[0, :, i].detach().numpy(), colors[i] + '--', label=f"scaled joint {i}")
-        #plt.legend()
-        #plt.show()
-        q_dot_scale = (torch.abs(q_dot) / torch.tensor(self.joint_vel_limit))
-        q_ddot_scale = (torch.abs(q_ddot) / torch.tensor(self.joint_acc_limit))
-        q_dot_scale_max = torch.amax(q_dot_scale, (-2, -1), keepdim=True)
-        q_ddot_scale_max = torch.amax(q_ddot_scale, (-2, -1), keepdim=True)
-        scale_max = torch.maximum(q_dot_scale_max, q_ddot_scale_max**(1./2))
-        trainable_t_cps -= torch.log(scale_max)
-        q, q_dot, q_ddot, t, dt, duration = self.compute_trajectory(q_cps.to(torch.float32), trainable_t_cps.to(torch.float32), differentiable=True)
+        #q_dot_scale = (torch.abs(q_dot) / torch.tensor(self.joint_vel_limit))
+        #q_ddot_scale = (torch.abs(q_ddot) / torch.tensor(self.joint_acc_limit))
+        #q_dot_scale_max = torch.amax(q_dot_scale, (-2, -1), keepdim=True)
+        #q_ddot_scale_max = torch.amax(q_ddot_scale, (-2, -1), keepdim=True)
+        #scale_max = torch.maximum(q_dot_scale_max, q_ddot_scale_max**(1./2))
+        #trainable_t_cps -= torch.log(scale_max)
+        #q, q_dot, q_ddot, t, dt, duration = self.compute_trajectory(q_cps.to(torch.float32), trainable_t_cps.to(torch.float32), differentiable=True)
         self._traj_no += 1
         return q, q_dot, q_ddot, t, dt, duration
 
