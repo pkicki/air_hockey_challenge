@@ -548,7 +548,7 @@ def build_agent_BSMPePPO(env_info, **agent_params):
                                         "init_sigma": sigma,
                                         },
                                 input_shape=(mdp_info.observation_space.shape[0],),
-                                output_shape=(n_dim * n_trainable_q_pts + n_trainable_t_pts))
+                                output_shape=(n_dim * n_trainable_q_pts + n_trainable_t_pts,))
 
     value_function_approximator = ValueNetwork(mdp_info.observation_space)
 
