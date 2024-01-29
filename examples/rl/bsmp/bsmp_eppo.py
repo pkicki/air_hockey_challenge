@@ -97,6 +97,7 @@ class BSMPePPO(ePPO):
         alphas_update = self.constraint_lr * np.log(
             (constraint_losses.detach().numpy() + self.violation_limits * 1e-1) / self.violation_limits)
         self.alphas += alphas_update
+        self.alphas = np.clip(self.alphas, -7., None)
         self.constraint_losses_log = constraint_losses
         self.constraint_losses = []
 
