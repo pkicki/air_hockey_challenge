@@ -37,6 +37,8 @@ class AirHockeyHit(AirHockeyDouble):
         self.init_ee_range = np.array([[0.60, 1.25], [-0.4, 0.4]])  # Robot Frame
         self.absorb_type = AbsorbType.NONE
         self.has_hit = False
+        self.hit_time = None
+        self.puck_velocity = None
 
         if opponent_agent is not None:
             self._opponent_agent = opponent_agent.draw_action
@@ -55,6 +57,7 @@ class AirHockeyHit(AirHockeyDouble):
         self._write_data("puck_y_pos", puck_pos[1])
         self.absorb_type = AbsorbType.NONE
         self.has_hit = False
+        self.hit_time = None
         #self._write_data("puck_x_pos", -0.5)
         #self._write_data("puck_y_pos", 0.0)
         #self._write_data("puck_x_vel", self.v * np.cos(self.theta))
@@ -77,11 +80,17 @@ class AirHockeyHit(AirHockeyDouble):
 
         super(AirHockeyHit, self).setup(obs)
     
+    def _create_info_dictionary(self, obs):
+        return {"has_hit": self.has_hit, "hit_time": self.hit_time, "puck_velocity": self.puck_velocity}
+    
     def _has_hit(self, state):
         ee_pos, ee_vel = self.get_ee()
         puck_cur_pos, puck_cur_vel = self.get_puck(state)
         # todo: make it reliable for moving puck case
-        return np.linalg.norm(puck_cur_vel) > 1e-2
+        hit = np.linalg.norm(puck_cur_vel) > 1e-2
+        if hit:
+            self.hit_time = self._data.time
+        return hit
         #if np.linalg.norm(ee_pos[:2] - puck_cur_pos[:2]) < mdp.env_info['puck']['radius'] + \
         #        mdp.env_info['mallet']['radius'] + 5e-3 and np.abs(ee_pos[2] - 0.065) < 0.02:
         #    return True
@@ -92,6 +101,7 @@ class AirHockeyHit(AirHockeyDouble):
         r = 0
         # Get puck's position and velocity (The position is in the world frame, i.e., center of the table)
         puck_pos, puck_vel = self.get_puck(next_state)
+        self.puck_velocity = np.linalg.norm(puck_vel[:2])
 
         # Define goal position
         goal = np.array([0.98, 0])
