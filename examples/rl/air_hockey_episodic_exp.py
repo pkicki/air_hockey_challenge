@@ -13,6 +13,7 @@ from examples.rl.bsmp.bsmp_distribution import DiagonalGaussianBSMPDistribution,
 
 from examples.rl.bsmp.bsmp_eppo import BSMPePPO
 from examples.rl.bsmp.bsmp_policy import BSMPPolicy
+from examples.rl.bsmp.bsmp_stopping_policy import BSMPStoppingPolicy
 from examples.rl.bsmp.bspline import BSpline
 from examples.rl.bsmp.bspline_timeoptimal_approximator import BSplineFastApproximatorAirHockeyWrapper
 from examples.rl.bsmp.context_builder import IdentityContextBuilder
@@ -54,7 +55,7 @@ torch.Tensor.__repr__ = custom_repr
 @single_experiment
 def experiment(env: str = '7dof-hit',
                n_envs: int = 1,
-               alg: str = "bsmp_eppo",
+               alg: str = "bsmp_eppo_return",
                n_epochs: int = 100000,
                n_steps: int = None,
                n_steps_per_fit: int = None,
@@ -206,7 +207,7 @@ def experiment(env: str = '7dof-hit',
             mean_duration = 0.
 
         # Evaluate
-        J_det, R, success, c_avg, c_max, states, actions = compute_metrics(core, eval_params)
+        J_det, R, success, c_avg, c_max, states, actions, time_to_hit, max_puck_vel = compute_metrics(core, eval_params)
         #assert False
         #wandb_plotting(core, states, actions, epoch)
 
@@ -219,7 +220,8 @@ def experiment(env: str = '7dof-hit',
                          c_max=np.max(np.concatenate(list(c_max.values()))))
         logger.epoch_info(epoch, J_det=J_det, V_sto=V_sto, VJ_bias=VJ_bias, R=R, E=E,
                           success=success, c_avg=np.mean(np.concatenate(list(c_avg.values()))),
-                          c_max=np.max(np.concatenate(list(c_max.values()))))
+                          c_max=np.max(np.concatenate(list(c_max.values()))),
+                          time_to_hit=time_to_hit, max_puck_vel=max_puck_vel)
         wandb.log({
             "Reward/": {"J_det": J_det, "J_sto": J_sto, "V_sto": V_sto, "VJ_bias": VJ_bias, "R": R, "success": success},
             #"Entropy/": {"E": E, "entropy_bonus": core.agent.bsmp_agent._log_entropy_bonus.exp().detach().numpy()},
@@ -228,7 +230,7 @@ def experiment(env: str = '7dof-hit',
                                  "max/": {str(i): a for i, a in enumerate(constraints_violation_sto_max)}},
             "Constraints_det/": {"avg/": {str(i): a for i, a in enumerate(constraints_violation_det_mean)},
                                  "max/": {str(i): a for i, a in enumerate(constraints_violation_det_max)}},
-            "Stats/": {"mean_duration": mean_duration},
+            "Stats/": {"mean_duration": mean_duration, "time_to_hit": time_to_hit, "max_puck_vel": max_puck_vel},
             # "Constraint": {
             #     "max": {"pos": np.max(c_max['joint_pos_constr']),
             #             "vel": np.max(c_max['joint_vel_constr']),
@@ -312,6 +314,9 @@ def agent_builder(env_info, agent_params):
     elif alg == "bsmp_eppo":
         bsmp_agent = build_agent_BSMPePPO(env_info, **agent_params)
         return BSMPAgent(env_info, bsmp_agent)
+    elif alg == "bsmp_eppo_return":
+        bsmp_agent = build_agent_BSMPePPO_return(env_info, **agent_params)
+        return BSMPAgent(env_info, bsmp_agent)
 
 
 
@@ -332,6 +337,85 @@ def build_agent_BSMP(env_info, **agent_params):
     agent = BSMP(env_info['rl_info'], robot_constraints, env_info["dt"], **agent_params)
     return agent
 
+
+def build_agent_BSMPePPO_return(env_info, **agent_params):
+
+    table_constraints = env_info["constraints"].get("ee_constr")
+    robot_constraints = dict(
+        q = env_info["robot"]["joint_pos_limit"][-1],
+        q_dot = env_info["robot"]["joint_vel_limit"][-1],
+        q_ddot = env_info["robot"]["joint_acc_limit"][-1],
+        z_ee = (table_constraints.z_lb + table_constraints.z_ub) / 2.,
+        x_ee_lb = table_constraints.x_lb,
+        y_ee_lb = table_constraints.y_lb,
+        y_ee_ub = table_constraints.y_ub,
+    )
+    n_q_pts = agent_params["n_q_cps"]
+    n_t_pts = agent_params["n_t_cps"]
+    n_pts_fixed_begin = agent_params["n_pts_fixed_begin"]
+    n_pts_fixed_end = agent_params["n_pts_fixed_end"]
+    n_dim = agent_params["n_dim"]
+    n_trainable_q_pts = n_q_pts - (n_pts_fixed_begin + n_pts_fixed_end)
+    n_trainable_q_stop_pts = n_q_pts - 6
+    n_trainable_t_pts = n_t_pts
+    n_trainable_t_stop_pts = n_t_pts
+
+    mdp_info = env_info['rl_info']
+
+    sigma_q_hit = 0.1 * torch.ones((n_trainable_q_pts, n_dim))
+    sigma_q_stop = 0.1 * torch.ones((n_trainable_q_stop_pts, n_dim))
+    sigma_t_hit = 0.15 * torch.ones((n_trainable_t_pts))
+    sigma_t_stop = 0.15 * torch.ones((n_trainable_t_stop_pts))
+    sigma_xy_stop = 0.10 * torch.ones((2))
+    sigma = torch.cat([sigma_q_hit.reshape(-1), sigma_q_stop.reshape(-1), sigma_t_hit, sigma_t_stop, sigma_xy_stop]).type(torch.FloatTensor)
+
+    mu_approximator = Regressor(TorchApproximator,
+                                network=ConfigurationTimeNetworkWrapper,
+                                batch_size=1,
+                                params={
+                                        "input_space": mdp_info.observation_space,
+                                        },
+                                input_shape=(mdp_info.observation_space.shape[0],),
+                                output_shape=(n_dim * n_trainable_q_pts + n_dim * n_trainable_q_stop_pts + 2, n_trainable_t_pts + n_trainable_t_stop_pts))
+    log_sigma_approximator = Regressor(TorchApproximator,
+                                network=LogSigmaNetworkWrapper,
+                                batch_size=1,
+                                params={
+                                        "input_space": mdp_info.observation_space,
+                                        "init_sigma": sigma,
+                                        },
+                                input_shape=(mdp_info.observation_space.shape[0],),
+                                output_shape=(n_dim * n_trainable_q_pts + n_trainable_t_pts + n_dim * n_trainable_q_stop_pts + 2 + n_trainable_t_stop_pts,))
+
+    value_function_approximator = ValueNetwork(mdp_info.observation_space)
+
+    policy = BSMPStoppingPolicy(env_info, env_info["dt"], n_q_pts, n_dim, n_t_pts, n_pts_fixed_begin, n_pts_fixed_end, robot_constraints)
+    dist = DiagonalGaussianBSMPSigmaDistribution(mu_approximator, log_sigma_approximator, agent_params["entropy_lb"])
+
+    optimizer = {'class': optim.Adam,
+                 'params': {'lr': agent_params["mu_lr"],
+                            'weight_decay': 0.0}}
+
+    value_function_optimizer = optim.Adam(value_function_approximator.parameters(), lr=agent_params["value_lr"])
+
+    context_builder = None
+    if dist.is_contextual:
+        context_builder = IdentityContextBuilder()
+
+    eppo_params = dict(n_epochs_policy=agent_params["n_epochs_policy"],
+                       batch_size=agent_params["batch_size"],
+                       eps_ppo=agent_params["sigma_eps"],
+                       target_entropy=agent_params["target_entropy"],
+                       entropy_lr=agent_params["entropy_lr"],
+                       initial_entropy_bonus=agent_params["initial_entropy_bonus"],
+                       #ent_coeff=agent_params["ent_coeff"],
+                       context_builder=context_builder
+                       )
+
+    agent = BSMPePPO(mdp_info, dist, policy, optimizer, value_function_approximator, value_function_optimizer,
+                     robot_constraints,
+                     agent_params["constraint_lr"], **eppo_params)
+    return agent
 
 def build_agent_BSMPePPO(env_info, **agent_params):
 
@@ -464,7 +548,7 @@ def build_agent_BSMPePPO(env_info, **agent_params):
                                         "init_sigma": sigma,
                                         },
                                 input_shape=(mdp_info.observation_space.shape[0],),
-                                output_shape=(n_dim * n_trainable_q_pts, n_trainable_t_pts))
+                                output_shape=(n_dim * n_trainable_q_pts + n_trainable_t_pts))
 
     value_function_approximator = ValueNetwork(mdp_info.observation_space)
 
@@ -534,8 +618,12 @@ def compute_metrics(core, eval_params):
     eps_length = dataset.episodes_length
     success = 0
     current_idx = 0
+    time_to_hit = []
+    max_puck_vel = []
     for episode_len in eps_length:
         success += dataset.info["success"][current_idx + episode_len - 1]
+        time_to_hit.append(dataset.info["hit_time"][current_idx + episode_len - 1])
+        max_puck_vel.append(np.max(dataset.info["puck_velocity"][current_idx:current_idx + episode_len]))
         current_idx += episode_len
     success /= len(eps_length)
 
@@ -607,7 +695,7 @@ def compute_metrics(core, eval_params):
     #plt.legend()
     #plt.show()
 
-    return J, R, success, c_avg, c_max, state, action
+    return J, R, success, c_avg, c_max, state, action, np.mean(time_to_hit), np.mean(max_puck_vel)
 
 
 def wandb_plotting(core, states, actions, step):

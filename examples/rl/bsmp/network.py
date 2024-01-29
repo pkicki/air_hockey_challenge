@@ -70,7 +70,7 @@ class LogSigmaNetwork(AirHockeyNetwork):
             torch.nn.Linear(input_shape[0], W), activation,
             torch.nn.Linear(W, W), activation,
             torch.nn.Linear(W, W), activation,
-            torch.nn.Linear(W, output_shape[0] + output_shape[1]),
+            torch.nn.Linear(W, output_shape[0]),
         )
 
     def __call__(self, x):
