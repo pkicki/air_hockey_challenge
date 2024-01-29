@@ -33,7 +33,7 @@ class BSMPePPO(ePPO):
                  #n_dim, sigma_init, sigma_eps, mu_lr, constraint_lr, **kwargs):
         self.robot_constraints = robot_constraints
         self.alphas = np.array([0.] * 18)
-        self.violation_limits = np.array([1e-3] * 7 + [1e-4] * 7 + [5e-6] * 4)
+        self.violation_limits = np.array([1e-4] * 7 + [1e-5] * 7 + [5e-6] * 4)
         self.constraint_lr = constraint_lr
         self.constraint_losses = []
         self.constraint_losses_log = []
