@@ -622,7 +622,9 @@ def compute_metrics(core, eval_params):
     max_puck_vel = []
     for episode_len in eps_length:
         success += dataset.info["success"][current_idx + episode_len - 1]
-        time_to_hit.append(dataset.info["hit_time"][current_idx + episode_len - 1])
+        hit_time = dataset.info["hit_time"][current_idx + episode_len - 1]
+        if hit_time is not None:
+            time_to_hit.append(hit_time)
         max_puck_vel.append(np.max(dataset.info["puck_velocity"][current_idx:current_idx + episode_len]))
         current_idx += episode_len
     success /= len(eps_length)
