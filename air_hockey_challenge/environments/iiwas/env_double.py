@@ -30,6 +30,8 @@ class AirHockeyDouble(AirHockeyBase):
                                                       R.from_euler('xyz', [0, 5 / 6 * np.pi, 0]).as_matrix(),
                                                       initial_q=init_state)
 
+        self.init_state = np.array([-7.16000830e-06, 6.97494070e-01, 7.26955352e-06, -5.04898567e-01, 6.60813111e-07, 1.92857916e+00, 0.])
+
         assert success is True
 
     def get_ee(self, robot=1):
