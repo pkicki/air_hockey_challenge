@@ -216,35 +216,35 @@ class BSMPPolicy(Policy):
         #trainable_t_cps -= torch.log(scale_max)
         #q, q_dot, q_ddot, t, dt, duration = self.compute_trajectory(q_cps.to(torch.float32), trainable_t_cps.to(torch.float32), differentiable=True)
 
-        q_ = q.detach().numpy()[0]
-        q_dot_ = q_dot.detach().numpy()[0]
-        q_ddot_ = q_ddot.detach().numpy()[0]
-        t_ = t.detach().numpy()[0]
-        qdl = self.joint_vel_limit
-        qddl = self.joint_acc_limit
-        for i in range(self.n_dim):
-            plt.subplot(3, 7, 1+i)
-            plt.plot(t_, q_[:, i])
-            plt.subplot(3, 7, 1+i+self.n_dim)
-            plt.plot(t_, q_dot_[:, i])
-            plt.plot([t_[0], t_[-1]], [qdl[i], qdl[i]], 'r--')
-            plt.plot([t_[0], t_[-1]], [-qdl[i], -qdl[i]], 'r--')
-            plt.subplot(3, 7, 1+i+2*self.n_dim)
-            plt.plot(t_, q_ddot_[:, i])
-            plt.plot([t_[0], t_[-1]], [qddl[i], qddl[i]], 'r--')
-            plt.plot([t_[0], t_[-1]], [-qddl[i], -qddl[i]], 'r--')
-        plt.show()
+        #q_ = q.detach().numpy()[0]
+        #q_dot_ = q_dot.detach().numpy()[0]
+        #q_ddot_ = q_ddot.detach().numpy()[0]
+        #t_ = t.detach().numpy()[0]
+        #qdl = self.joint_vel_limit
+        #qddl = self.joint_acc_limit
+        #for i in range(self.n_dim):
+        #    plt.subplot(3, 7, 1+i)
+        #    plt.plot(t_, q_[:, i])
+        #    plt.subplot(3, 7, 1+i+self.n_dim)
+        #    plt.plot(t_, q_dot_[:, i])
+        #    plt.plot([t_[0], t_[-1]], [qdl[i], qdl[i]], 'r--')
+        #    plt.plot([t_[0], t_[-1]], [-qdl[i], -qdl[i]], 'r--')
+        #    plt.subplot(3, 7, 1+i+2*self.n_dim)
+        #    plt.plot(t_, q_ddot_[:, i])
+        #    plt.plot([t_[0], t_[-1]], [qddl[i], qddl[i]], 'r--')
+        #    plt.plot([t_[0], t_[-1]], [-qddl[i], -qddl[i]], 'r--')
+        #plt.show()
 
-        xyz = []
-        for k in range(q.shape[1]):
-            xyz_ = self.optimizer.forward_kinematics(q.detach().numpy()[0, k])
-            xyz.append(xyz_)
-        xyz = np.array(xyz)
-        plt.subplot(121)
-        plt.plot(xyz[:, 0], xyz[:, 1])
-        plt.subplot(122)
-        plt.plot(xyz[:, 2])
-        plt.show()
+        #xyz = []
+        #for k in range(q.shape[1]):
+        #    xyz_ = self.optimizer.forward_kinematics(q.detach().numpy()[0, k])
+        #    xyz.append(xyz_)
+        #xyz = np.array(xyz)
+        #plt.subplot(121)
+        #plt.plot(xyz[:, 0], xyz[:, 1])
+        #plt.subplot(122)
+        #plt.plot(xyz[:, 2])
+        #plt.show()
 
         self._traj_no += 1
         return q, q_dot, q_ddot, t, dt, duration
