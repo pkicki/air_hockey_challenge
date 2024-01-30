@@ -141,7 +141,8 @@ class BSMPPolicy(Policy):
         #trainable_q_cps = torch.tanh(trainable_q_cps/10.) * np.pi
         middle_trainable_q_pts = torch.tanh(trainable_q_cps[:, :-3]/10.) * np.pi
         trainable_q_d = torch.tanh(trainable_q_cps[:, -1:]/10.) * np.pi
-        trainable_q_ddot_d = torch.tanh(trainable_q_cps[:, -3:-2]) * torch.tensor(self.joint_acc_limit)
+        #delta_xy_d = torch.tanh(trainable_q_cps[:, -1, -2:]/10.) * 0.3
+        trainable_q_ddot_d = torch.tanh(trainable_q_cps[:, -3:-2]*5.) * torch.tensor(self.joint_acc_limit)
         trainable_q_dot_d = torch.tanh(trainable_q_cps[:, -2:-1]/10.) * 2. * torch.tensor(self.joint_vel_limit)
         #trainable_delta_angle = torch.tanh(trainable_q_cps[:, -2:-1, -1]/10.) * np.pi/2.
         #trainable_scale = torch.sigmoid(trainable_q_cps[:, -2, -2])[:, None, None]
@@ -163,22 +164,22 @@ class BSMPPolicy(Policy):
         #x_des = puck_pos - (self.env_info['mallet']['radius'] + self.env_info['puck']['radius']) * v_des
         x_des = puck_pos# - (self.env_info['mallet']['radius'] + self.env_info['puck']['radius'] - 0.01) * v_des
         x_des[:, -1] = self.desired_ee_z# - 0.03# - self.env_info['robot']['universal_height']
+        #x_des[:, :2] = x_des[:, :2] + delta_xy_d.detach().numpy()
 
         q_d_s = []
         for k in range(q_0.shape[0]):
             success, q_d = self.optimizer.solve_hit_config(x_des[k], v_des.detach().numpy()[k], q_0.detach().numpy()[k, 0])
             q_d_s.append(q_d)
         q_d_bias = torch.tensor(q_d_s)[:, None]
-        q_d = trainable_q_d + q_d_bias
+        q_d = q_d_bias + trainable_q_d 
         q_dot_d_s = []
         for k in range(q_0.shape[0]):
             q_dot_d = (torch.linalg.pinv(torch.tensor(self.optimizer.jacobian(q_d.detach().numpy()[k, 0])))[:, :3] @ v_des.T)[..., 0]
             q_dot_d_s.append(q_dot_d)
         q_dot_d_bias = torch.stack(q_dot_d_s, dim=0)[:, None]
         scale = 1. / torch.max(torch.abs(q_dot_d_bias) / torch.tensor(self.joint_vel_limit), axis=-1, keepdim=True)[0]
-        q_dot_d = q_dot_d_bias + trainable_q_dot_d# * scale * trainable_scale
-        #q_d = trainable_q_cps[:, -1:] + q_d_bias
-        #q_dot_d = trainable_q_cps[:, -2:-1] + q_dot_d_bias
+        #q_dot_d = q_dot_d_bias * scale * trainable_scale
+        q_dot_d = q_dot_d_bias * scale + trainable_q_dot_d
 
         # hax
         #q_d = trainable_q_cps[:, -1:] + q_0
@@ -215,30 +216,35 @@ class BSMPPolicy(Policy):
         #trainable_t_cps -= torch.log(scale_max)
         #q, q_dot, q_ddot, t, dt, duration = self.compute_trajectory(q_cps.to(torch.float32), trainable_t_cps.to(torch.float32), differentiable=True)
 
-        #q_ = q.detach().numpy()[0]
-        #q_dot_ = q_dot.detach().numpy()[0]
-        #q_ddot_ = q_ddot.detach().numpy()[0]
-        #t_ = t.detach().numpy()[0]
-        #qdl = self.joint_vel_limit
-        #qddl = self.joint_acc_limit
-        #for i in range(self.n_dim):
-        #    plt.subplot(3, 7, 1+i)
-        #    plt.plot(t_, q_[:, i])
-        #    plt.subplot(3, 7, 1+i+self.n_dim)
-        #    plt.plot(t_, q_dot_[:, i])
-        #    plt.plot([t_[0], t_[-1]], [qdl[i], qdl[i]], 'r--')
-        #    plt.plot([t_[0], t_[-1]], [-qdl[i], -qdl[i]], 'r--')
-        #    plt.subplot(3, 7, 1+i+2*self.n_dim)
-        #    plt.plot(t_, q_ddot_[:, i])
-        #    plt.plot([t_[0], t_[-1]], [qddl[i], qddl[i]], 'r--')
-        #    plt.plot([t_[0], t_[-1]], [-qddl[i], -qddl[i]], 'r--')
-        #plt.show()
+        q_ = q.detach().numpy()[0]
+        q_dot_ = q_dot.detach().numpy()[0]
+        q_ddot_ = q_ddot.detach().numpy()[0]
+        t_ = t.detach().numpy()[0]
+        qdl = self.joint_vel_limit
+        qddl = self.joint_acc_limit
+        for i in range(self.n_dim):
+            plt.subplot(3, 7, 1+i)
+            plt.plot(t_, q_[:, i])
+            plt.subplot(3, 7, 1+i+self.n_dim)
+            plt.plot(t_, q_dot_[:, i])
+            plt.plot([t_[0], t_[-1]], [qdl[i], qdl[i]], 'r--')
+            plt.plot([t_[0], t_[-1]], [-qdl[i], -qdl[i]], 'r--')
+            plt.subplot(3, 7, 1+i+2*self.n_dim)
+            plt.plot(t_, q_ddot_[:, i])
+            plt.plot([t_[0], t_[-1]], [qddl[i], qddl[i]], 'r--')
+            plt.plot([t_[0], t_[-1]], [-qddl[i], -qddl[i]], 'r--')
+        plt.show()
 
-        #xyz = []
-        #for k in range(q.shape[1]):
-        #    xyz_ = self.optimizer.forward_kinematics(q.detach().numpy()[0, k])
-        #    xyz.append(xyz_)
-        #xyz = np.array(xyz)
+        xyz = []
+        for k in range(q.shape[1]):
+            xyz_ = self.optimizer.forward_kinematics(q.detach().numpy()[0, k])
+            xyz.append(xyz_)
+        xyz = np.array(xyz)
+        plt.subplot(121)
+        plt.plot(xyz[:, 0], xyz[:, 1])
+        plt.subplot(122)
+        plt.plot(xyz[:, 2])
+        plt.show()
 
         self._traj_no += 1
         return q, q_dot, q_ddot, t, dt, duration
