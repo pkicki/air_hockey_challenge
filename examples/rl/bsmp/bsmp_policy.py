@@ -8,6 +8,7 @@ from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 
 from mushroom_rl.policy import Policy
+from examples.rl.bsmp.hpo_interface import get_hitting_configuration_opt
 
 from examples.rl.bsmp.utils import unpack_data_airhockey
 
@@ -140,7 +141,7 @@ class BSMPPolicy(Policy):
         trainable_t_cps = trainable_t_cps #+ torch.log(1.33 * torch.ones_like(trainable_t_cps))
         #trainable_q_cps = torch.tanh(trainable_q_cps/10.) * np.pi
         middle_trainable_q_pts = torch.tanh(trainable_q_cps[:, :-3]/10.) * np.pi
-        trainable_q_d = torch.tanh(trainable_q_cps[:, -1:]/10.) * np.pi
+        trainable_q_d = torch.tanh(trainable_q_cps[:, -1:]/30.) * np.pi
         #delta_xy_d = torch.tanh(trainable_q_cps[:, -1, -2:]/10.) * 0.3
         trainable_q_ddot_d = torch.tanh(trainable_q_cps[:, -3:-2]*5.) * torch.tensor(self.joint_acc_limit)
         trainable_q_dot_d = torch.tanh(trainable_q_cps[:, -2:-1]/10.) * 2. * torch.tensor(self.joint_vel_limit)
@@ -164,22 +165,33 @@ class BSMPPolicy(Policy):
         #x_des = puck_pos - (self.env_info['mallet']['radius'] + self.env_info['puck']['radius']) * v_des
         x_des = puck_pos# - (self.env_info['mallet']['radius'] + self.env_info['puck']['radius'] - 0.01) * v_des
         x_des[:, -1] = self.desired_ee_z# - 0.03# - self.env_info['robot']['universal_height']
+        x_des = x_des.astype(np.float64)
         #x_des[:, :2] = x_des[:, :2] + delta_xy_d.detach().numpy()
 
+        #q_d_s = []
+        #for k in range(q_0.shape[0]):
+        #    success, q_d = self.optimizer.solve_hit_config(x_des[k], v_des.detach().numpy()[k], q_0.detach().numpy()[k, 0])
+        #    q_d_s.append(q_d)
+        #q_d_bias = torch.tensor(q_d_s)[:, None]
+        #q_d = q_d_bias + trainable_q_d 
+        #q_dot_d_s = []
+        #for k in range(q_0.shape[0]):
+        #    q_dot_d = (torch.linalg.pinv(torch.tensor(self.optimizer.jacobian(q_d.detach().numpy()[k, 0])))[:, :3] @ v_des.T)[..., 0]
+        #    q_dot_d_s.append(q_dot_d)
+        #q_dot_d_bias = torch.stack(q_dot_d_s, dim=0)[:, None]
+        #scale = 1. / torch.max(torch.abs(q_dot_d_bias) / torch.tensor(self.joint_vel_limit), axis=-1, keepdim=True)[0]
+        ##q_dot_d = q_dot_d_bias * scale * trainable_scale
+        #q_dot_d = q_dot_d_bias * scale + trainable_q_dot_d
+
         q_d_s = []
-        for k in range(q_0.shape[0]):
-            success, q_d = self.optimizer.solve_hit_config(x_des[k], v_des.detach().numpy()[k], q_0.detach().numpy()[k, 0])
-            q_d_s.append(q_d)
-        q_d_bias = torch.tensor(q_d_s)[:, None]
-        q_d = q_d_bias + trainable_q_d 
         q_dot_d_s = []
         for k in range(q_0.shape[0]):
-            q_dot_d = (torch.linalg.pinv(torch.tensor(self.optimizer.jacobian(q_d.detach().numpy()[k, 0])))[:, :3] @ v_des.T)[..., 0]
-            q_dot_d_s.append(q_dot_d)
-        q_dot_d_bias = torch.stack(q_dot_d_s, dim=0)[:, None]
-        scale = 1. / torch.max(torch.abs(q_dot_d_bias) / torch.tensor(self.joint_vel_limit), axis=-1, keepdim=True)[0]
-        #q_dot_d = q_dot_d_bias * scale * trainable_scale
-        q_dot_d = q_dot_d_bias * scale + trainable_q_dot_d
+            q_d_, q_dot_d_ = get_hitting_configuration_opt(x_des[k, 0], x_des[k, 1], x_des[k, 2],
+                                                           np.arctan2(vec_puck_goal[k, 1], vec_puck_goal[k, 0]), q0=q_0.detach().numpy()[k, 0].tolist())
+            q_d_s.append(np.array(q_d_))
+            q_dot_d_s.append(np.array(q_dot_d_))
+        q_d = torch.tensor(q_d_s)[:, None] + trainable_q_d
+        q_dot_d = torch.tensor(q_dot_d_s)[:, None] + trainable_q_dot_d
 
         # hax
         #q_d = trainable_q_cps[:, -1:] + q_0
