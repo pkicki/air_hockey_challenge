@@ -31,7 +31,8 @@ RUN sed -i "28 i \ \ \ \ except ValueError:\n\ \ \ \ \ \ \ \ args['git_hash'] = 
 
 RUN git clone https://github.com/NVlabs/storm.git && \
     cd storm && \
-    pip install -e .
+    pip install -e . && \
+    pip install hydra urdf_parser_py
 
 RUN pip uninstall -y mushroom-rl && \
     git clone https://github.com/MushroomRL/mushroom-rl.git && \
