@@ -7,43 +7,28 @@ ENV PYTHONUNBUFFERED=1 \
     TZ=Europe/Berlin \
     PYTHONPATH=/air_hockey_challenge
 
-RUN apt-get update && apt-get install -y python3-pip python-is-python3 git ffmpeg libsm6 libxext6 vim
-
-
-WORKDIR /wheels
-
-RUN apt-get update && apt-get -y install git
-
-COPY requirements.txt .
-RUN pip install -U pip && \
-    pip install networkx==3.1 && \
-    pip install -r requirements.txt
-
-#COPY --from=pip-build /wheels /wheels
-#WORKDIR /src
-
-RUN apt-get update && apt-get -y install 
-
-#RUN pip install -U pip  \
-#    && pip install --no-cache-dir \
-#    --no-index \
-#    -r /wheels/requirements.txt \
-#    -f /wheels \
-#    && rm -rf /wheels
-
-# experiment launcher hotfix
-RUN sed -i "28 i \ \ \ \ except ValueError:\n\ \ \ \ \ \ \ \ args['git_hash'] = ''\n\ \ \ \ \ \ \ \ args['git_url'] = ''" /usr/local/lib/python3.8/dist-packages/experiment_launcher/utils.py
-
 # For nvidia GPU
 ENV NVIDIA_VISIBLE_DEVICES \
     ${NVIDIA_VISIBLE_DEVICES:-all}
 ENV NVIDIA_DRIVER_CAPABILITIES \
     ${NVIDIA_DRIVER_CAPABILITIES:+$NVIDIA_DRIVER_CAPABILITIES,}graphics
 
-# libgl1-mesa-glx libgl1-mesa-dri for non-nvidia GPU
-RUN apt-get update && apt-get -y install xauth tzdata libgl1-mesa-glx libgl1-mesa-dri
 
-# TODO move up at more serious refactor
+RUN apt-get update && \
+    apt-get install -y \
+    python3-pip python-is-python3 git \
+    ffmpeg libsm6 libxext6 vim git \
+    xauth tzdata libgl1-mesa-glx libgl1-mesa-dri \
+    libeigen3-dev lsb-release curl coinor-libclp-dev cmake
+
+COPY requirements.txt .
+RUN pip install -U pip && \
+    pip install networkx==3.1 && \
+    pip install -r requirements.txt
+
+# experiment launcher hotfix
+RUN sed -i "28 i \ \ \ \ except ValueError:\n\ \ \ \ \ \ \ \ args['git_hash'] = ''\n\ \ \ \ \ \ \ \ args['git_url'] = ''" /usr/local/lib/python3.8/dist-packages/experiment_launcher/utils.py
+
 RUN git clone https://github.com/NVlabs/storm.git && \
     cd storm && \
     pip install -e .
@@ -54,7 +39,7 @@ RUN pip uninstall -y mushroom-rl && \
     git checkout ePPO && \
     pip install --no-use-pep517 -e .[all]
 
-RUN apt update && apt install -y libeigen3-dev lsb-release curl coinor-libclp-dev cmake
+RUN apt update && apt install -y 
 
 RUN git clone https://github.com/stevengj/nlopt.git && \
     cd nlopt && mkdir build && cd build && \
