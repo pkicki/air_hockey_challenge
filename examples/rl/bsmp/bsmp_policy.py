@@ -1,15 +1,13 @@
-import os
 import numpy as np
 import torch
 from air_hockey_challenge.utils.kinematics import forward_kinematics, jacobian
 from baseline.baseline_agent.optimizer import TrajectoryOptimizer
-from examples.rl.bsmp.bspline import BSpline
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 
 from mushroom_rl.policy import Policy
-from examples.rl.bsmp.hpo_interface import get_hitting_configuration_opt
 
+from examples.rl.bsmp.bspline import BSpline
 from examples.rl.bsmp.utils import unpack_data_airhockey
 
 
@@ -168,32 +166,17 @@ class BSMPPolicy(Policy):
         x_des = x_des.astype(np.float64)
         #x_des[:, :2] = x_des[:, :2] + delta_xy_d.detach().numpy()
 
-        #q_d_s = []
-        #for k in range(q_0.shape[0]):
-        #    success, q_d = self.optimizer.solve_hit_config(x_des[k], v_des.detach().numpy()[k], q_0.detach().numpy()[k, 0])
-        #    q_d_s.append(q_d)
-        #q_d_bias = torch.tensor(q_d_s)[:, None]
-        #q_d = q_d_bias + trainable_q_d 
-        #q_dot_d_s = []
-        #for k in range(q_0.shape[0]):
-        #    q_dot_d = (torch.linalg.pinv(torch.tensor(self.optimizer.jacobian(q_d.detach().numpy()[k, 0])))[:, :3] @ v_des.T)[..., 0]
-        #    q_dot_d_s.append(q_dot_d)
-        #q_dot_d_bias = torch.stack(q_dot_d_s, dim=0)[:, None]
-        #scale = 1. / torch.max(torch.abs(q_dot_d_bias) / torch.tensor(self.joint_vel_limit), axis=-1, keepdim=True)[0]
-        ##q_dot_d = q_dot_d_bias * scale * trainable_scale
-        #q_dot_d = q_dot_d_bias * scale + trainable_q_dot_d
-
         q_d_s = []
+        for k in range(q_0.shape[0]):
+            success, q_d = self.optimizer.solve_hit_config(x_des[k], v_des.detach().numpy()[k], q_0.detach().numpy()[k, 0])
+            q_d_s.append(q_d)
+        q_d_bias = torch.tensor(q_d_s)[:, None]
+        q_d = q_d_bias + trainable_q_d 
+
         q_dot_d_s = []
         for k in range(q_0.shape[0]):
-            q_d_, q_dot_d_ = get_hitting_configuration_opt(x_des[k, 0], x_des[k, 1], x_des[k, 2],
-                                                           np.arctan2(vec_puck_goal[k, 1], vec_puck_goal[k, 0]), q0=q_0.detach().numpy()[k, 0].tolist())
-            if q_d_ is None:
-                q_d_ = q_0.detach().numpy()[k, 0]
-                q_dot_d_ = np.zeros_like(q_d_)
-            q_d_s.append(np.array(q_d_))
-            q_dot_d_s.append(np.array(q_dot_d_))
-        q_d = torch.tensor(q_d_s)[:, None] + trainable_q_d
+            q_dot_d = self.optimizer.solve_hitting_veocity(q_d.detach().numpy()[k, 0], v_des.detach().numpy()[k])
+            q_dot_d_s.append(q_dot_d)
         q_dot_d = torch.tensor(q_dot_d_s)[:, None] + trainable_q_dot_d
 
         # hax

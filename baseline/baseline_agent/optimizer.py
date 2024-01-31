@@ -79,6 +79,26 @@ class TrajectoryOptimizer:
     def forward_kinematics(self, q_cur):
         return forward_kinematics(self.robot_model, self.robot_data, q_cur)[0]
 
+    def solve_hitting_veocity(self, q, v_des):
+        v_des = v_des.reshape((1, 3))
+        J = self.jacobian(q)[:3]
+        orthogonal_complement = scipy.linalg.null_space(v_des)
+        ocJ = orthogonal_complement.T @ J
+        nullocJ = scipy.linalg.null_space(ocJ)
+        lb = self.env_info['robot']['joint_pos_limit'][0]
+        ub = self.env_info['robot']['joint_pos_limit'][1]
+        c = -v_des @ J @ nullocJ
+        A_ub = np.concatenate([-nullocJ, nullocJ])
+        b_ub = np.concatenate([-lb, ub])
+        res = scipy.optimize.linprog(c, A_ub=A_ub, b_ub=b_ub)
+        alpha = res.x
+        q_dot_null = nullocJ @ alpha
+        q_dot_base = np.linalg.pinv(J) @ v_des.T
+        q_dot = q_dot_base[:, 0] + q_dot_null
+        scale = 1. / np.max(np.abs(q_dot) / ub)
+        q_dot *= scale
+        return q_dot
+
     def solve_hit_config(self, x_des, v_des, q_0):
         reg = 1e-6
         dim = q_0.shape[0]
