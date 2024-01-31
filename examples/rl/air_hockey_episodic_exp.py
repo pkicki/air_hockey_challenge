@@ -3,21 +3,18 @@ import os, sys
 from time import perf_counter
 
 import numpy as np
-import torch.nn.functional as F
 import torch.optim as optim
 import torch.random
 import wandb
 from experiment_launcher import run_experiment, single_experiment
-from baseline.baseline_agent.optimizer import TrajectoryOptimizer
 from examples.rl.bsmp.bsmp_distribution import DiagonalGaussianBSMPDistribution, DiagonalGaussianBSMPSigmaDistribution, DiagonalMultiGaussianBSMPSigmaDistribution
 
 from examples.rl.bsmp.bsmp_eppo import BSMPePPO
 from examples.rl.bsmp.bsmp_policy import BSMPPolicy
 from examples.rl.bsmp.bsmp_stopping_policy import BSMPStoppingPolicy
 from examples.rl.bsmp.bspline import BSpline
-from examples.rl.bsmp.bspline_timeoptimal_approximator import BSplineFastApproximatorAirHockeyWrapper
 from examples.rl.bsmp.context_builder import IdentityContextBuilder
-from examples.rl.bsmp.network import ConfigurationTimeNetwork, ConfigurationTimeNetworkWrapper, LogSigmaNetworkWrapper
+from examples.rl.bsmp.network import ConfigurationTimeNetworkWrapper, LogSigmaNetworkWrapper
 from examples.rl.bsmp.utils import equality_loss, limit_loss, unpack_data_airhockey
 from examples.rl.bsmp.value_network import ValueNetwork
 
@@ -28,21 +25,13 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__))))
 from air_hockey_challenge.framework.air_hockey_challenge_wrapper import AirHockeyChallengeWrapper
 from air_hockey_challenge.framework.challenge_core import ChallengeCore
 from air_hockey_challenge.framework.challenge_core_vectorized import ChallengeCoreVectorized
-from atacom_agent_wrapper import ATACOMAgent, build_ATACOM_Controller
-from network import SACActorNetwork, SACCriticNetwork
-from rewards import HitReward, DefendReward, PrepareReward
-from rl_agent_wrapper import RlAgent
 from bsmp_agent_wrapper import BSMPAgent
-from bsmp.agent import BSMP
 
 from mushroom_rl.core import Logger, Agent, MultiprocessEnvironment
 from mushroom_rl.utils.torch import TorchUtils
 from mushroom_rl.utils.callbacks import CollectDataset
 from mushroom_rl.approximators import Regressor
 from mushroom_rl.approximators.parametric import TorchApproximator
-from mushroom_rl.rl_utils.optimizers import AdaptiveOptimizer
-from mushroom_rl.distributions import DiagonalGaussianTorchDistribution, CholeskyGaussianTorchDistribution
-from mushroom_rl.environments.mujoco_envs.air_hockey import AirHockeyHit
 
 import matplotlib.pyplot as plt
 
@@ -308,34 +297,12 @@ def agent_builder(env_info, agent_params):
                     return agent
         raise ValueError(f"Unable to find agent-{seed}.msh in {root}")
 
-    if alg == "bsmp":
-        bsmp_agent = build_agent_BSMP(env_info, **agent_params)
-        return BSMPAgent(env_info, bsmp_agent)
-    elif alg == "bsmp_eppo":
+    if alg == "bsmp_eppo":
         bsmp_agent = build_agent_BSMPePPO(env_info, **agent_params)
         return BSMPAgent(env_info, bsmp_agent)
     elif alg == "bsmp_eppo_return":
         bsmp_agent = build_agent_BSMPePPO_return(env_info, **agent_params)
         return BSMPAgent(env_info, bsmp_agent)
-
-
-
-def build_agent_BSMP(env_info, **agent_params):
-
-    table_constraints = env_info["constraints"].get("ee_constr")
-    robot_constraints = dict(
-        q = env_info["robot"]["joint_pos_limit"][-1],
-        q_dot = env_info["robot"]["joint_vel_limit"][-1],
-        q_ddot = env_info["robot"]["joint_acc_limit"][-1],
-        z_ee = (table_constraints.z_lb + table_constraints.z_ub) / 2.,
-        x_ee_lb = table_constraints.x_lb,
-        y_ee_lb = table_constraints.y_lb,
-        y_ee_ub = table_constraints.y_ub,
-    )
-
-
-    agent = BSMP(env_info['rl_info'], robot_constraints, env_info["dt"], **agent_params)
-    return agent
 
 
 def build_agent_BSMPePPO_return(env_info, **agent_params):
