@@ -188,6 +188,9 @@ class BSMPPolicy(Policy):
         for k in range(q_0.shape[0]):
             q_d_, q_dot_d_ = get_hitting_configuration_opt(x_des[k, 0], x_des[k, 1], x_des[k, 2],
                                                            np.arctan2(vec_puck_goal[k, 1], vec_puck_goal[k, 0]), q0=q_0.detach().numpy()[k, 0].tolist())
+            if q_d_ is None:
+                q_d_ = q_0.detach().numpy()[k, 0]
+                q_dot_d_ = np.zeros_like(q_d_)
             q_d_s.append(np.array(q_d_))
             q_dot_d_s.append(np.array(q_dot_d_))
         q_d = torch.tensor(q_d_s)[:, None] + trainable_q_d
