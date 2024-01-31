@@ -11,8 +11,9 @@ WORKDIR /wheels
 RUN apt-get update && apt-get -y install git
 
 COPY requirements.txt .
-RUN pip install -U pip  \
-    && pip wheel -r requirements.txt
+RUN pip install -U pip && \
+    pip install networkx==3.1 && \
+    pip wheel -r requirements.txt
     #pip install --extra-index-url https://download.pytorch.org/whl/cpu \
     #torch \
     #mujoco>=2.3.2 \
@@ -41,17 +42,8 @@ RUN pip install -U pip  \
     -f /wheels \
     && rm -rf /wheels
 
-# TODO remove at more serious refactor
-RUN git clone https://github.com/facebookresearch/differentiable-robot-model.git && \
-    cd differentiable-robot-model && \
-    python setup.py develop
-
 # experiment launcher hotfix
 RUN sed -i "28 i \ \ \ \ except ValueError:\n\ \ \ \ \ \ \ \ args['git_hash'] = ''\n\ \ \ \ \ \ \ \ args['git_url'] = ''" /usr/local/lib/python3.8/dist-packages/experiment_launcher/utils.py
-
-#COPY . 2023-challenge/
-
-#CMD ["python", "2023-challenge/run.py"]
 
 FROM eval as dev
 # For nvidia GPU
