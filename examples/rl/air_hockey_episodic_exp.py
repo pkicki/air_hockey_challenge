@@ -50,11 +50,11 @@ def experiment(env: str = '7dof-hit',
                n_epochs: int = 100000,
                n_steps: int = None,
                n_steps_per_fit: int = None,
-               n_episodes: int = 16,
-               n_episodes_per_fit: int = 16,
-               n_eval_episodes: int = 2,
+               n_episodes: int = 32,
+               n_episodes_per_fit: int = 32,
+               n_eval_episodes: int = 10,
 
-               batch_size: int = 16,
+               batch_size: int = 32,
                use_cuda: bool = False,
 
                interpolation_order: int = -1,
@@ -64,8 +64,8 @@ def experiment(env: str = '7dof-hit',
                debug: bool = False,
                seed: int = 444,
                quiet: bool = True,
-               render: bool = True,
-               #render: bool = False,
+               #render: bool = True,
+               render: bool = False,
                results_dir: str = './logs',
                **kwargs):
     np.random.seed(seed)
@@ -96,8 +96,8 @@ def experiment(env: str = '7dof-hit',
         entropy_lb=kwargs["entropy_lb"] if 'entropy_lb' in kwargs.keys() else -99,
     )
 
-    name = (f"ePPO_alphaPIDkp1kd01ki001_TROhit_qddotdmul5qddiv30_"
-            f"hor150_initsigmaq01t015_gamma099_"
+    name = (f"ePPO_unstructured_initsigmaq01t015_qdiv1_"
+            f"gamma099_hor150_"
             f"lr{agent_params['mu_lr']}_valuelr{agent_params['value_lr']}_bs{batch_size}_"
             f"constrlr{agent_params['constraint_lr']}_nep{n_episodes}_neppf{n_episodes_per_fit}_"
             f"neppol{agent_params['n_epochs_policy']}_epsppo{agent_params['eps_ppo']}_"
