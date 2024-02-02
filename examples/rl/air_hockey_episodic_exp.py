@@ -93,7 +93,9 @@ def experiment(env: str = '7dof-hit',
         target_entropy=kwargs["target_entropy"] if 'target_entropy' in kwargs.keys() else -99.,
         entropy_lr=kwargs["entropy_lr"] if 'entropy_lr' in kwargs.keys() else 1e-4,
         initial_entropy_bonus=kwargs["initial_entropy_bonus"] if 'initial_entropy_bonus' in kwargs.keys() else 3e-3,
-        entropy_lb=kwargs["entropy_lb"] if 'entropy_lb' in kwargs.keys() else -99,
+        entropy_lb=kwargs["entropy_lb"] if 'entropy_lb' in kwargs.keys() else -60,
+        initial_entropy_lb=kwargs["initial_entropy_lb"] if 'initial_entropy_lb' in kwargs.keys() else -26,
+        entropy_lb_ep=kwargs["entropy_lb_ep"] if 'entropy_lb_ep' in kwargs.keys() else 2000,
     )
 
     name = (f"ePPO_unstructured_initsigmaq01t015_qdiv1_"
@@ -101,7 +103,8 @@ def experiment(env: str = '7dof-hit',
             f"lr{agent_params['mu_lr']}_valuelr{agent_params['value_lr']}_bs{batch_size}_"
             f"constrlr{agent_params['constraint_lr']}_nep{n_episodes}_neppf{n_episodes_per_fit}_"
             f"neppol{agent_params['n_epochs_policy']}_epsppo{agent_params['eps_ppo']}_"
-            f"sigmainit{agent_params['sigma_init']}_ent_lb{agent_params['entropy_lb']}_"
+            f"sigmainit{agent_params['sigma_init']}_entlb{agent_params['entropy_lb']}_"
+            f"entlbinit{agent_params['initial_entropy_lb']}_entlbep{agent_params['entropy_lb_ep']}_"
             f"nqcps{agent_params['n_q_cps']}_ntcps{agent_params['n_t_cps']}_seed{seed}")
 
     results_dir = os.path.join(results_dir, name)
@@ -223,6 +226,9 @@ def experiment(env: str = '7dof-hit',
         J_det, R, success, c_avg, c_max, states, actions, time_to_hit, max_puck_vel = compute_metrics(core, eval_params)
         #assert False
         #wandb_plotting(core, states, actions, epoch)
+        target_entropy = np.maximum(agent_params["initial_entropy_lb"] +
+            (agent_params["entropy_lb"] - agent_params["initial_entropy_lb"]) * epoch / agent_params["entropy_lb_ep"], agent_params["entropy_lb"])
+        core.agent.bsmp_agent.set_target_entropy(target_entropy)
 
         if "logger_callback" in kwargs.keys():
             kwargs["logger_callback"](J_det, J_sto, V_sto, R, E, success, c_avg, c_max)
