@@ -134,6 +134,9 @@ class DiagonalGaussianBSMPSigmaDistribution(AbstractGaussianTorchDistribution):
             _e_lb='primitive',
         )
 
+    def set_e_lb(self, e_lb):
+        self._e_lb = e_lb
+
     def parameters(self):
         return list(self._mu_approximator.model.network.parameters()) + list(self._log_sigma_approximator.model.network.parameters())
 

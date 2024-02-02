@@ -226,9 +226,9 @@ def experiment(env: str = '7dof-hit',
         J_det, R, success, c_avg, c_max, states, actions, time_to_hit, max_puck_vel = compute_metrics(core, eval_params)
         #assert False
         #wandb_plotting(core, states, actions, epoch)
-        target_entropy = np.maximum(agent_params["initial_entropy_lb"] +
+        entropy_lb = np.maximum(agent_params["initial_entropy_lb"] +
             (agent_params["entropy_lb"] - agent_params["initial_entropy_lb"]) * epoch / agent_params["entropy_lb_ep"], agent_params["entropy_lb"])
-        core.agent.bsmp_agent.set_target_entropy(target_entropy)
+        core.agent.bsmp_agent.distribution.set_e_lb(entropy_lb)
 
         if "logger_callback" in kwargs.keys():
             kwargs["logger_callback"](J_det, J_sto, V_sto, R, E, success, c_avg, c_max)

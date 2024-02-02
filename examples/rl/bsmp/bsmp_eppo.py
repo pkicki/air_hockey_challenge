@@ -77,12 +77,6 @@ class BSMPePPO(ePPO):
             _epoch_no='primitive',
         )
 
-    def set_target_entropy(self, target_entropy):
-        self._target_entropy = target_entropy
-    
-    def get_target_entropy(self):
-        return self._target_entropy
-
     def episode_start(self, initial_state, episode_info):
         _, theta = super().episode_start(initial_state, episode_info)
         return self._convert_to_env_backend(self.policy.reset(initial_state)), theta
