@@ -5,7 +5,7 @@ from mushroom_rl.distributions import AbstractGaussianTorchDistribution
 from mushroom_rl.utils.torch import TorchUtils
 
 from examples.rl.bsmp.multinormal_distribution import MultiNormalDistribution
-from examples.rl.bsmp.utils import project_entropy
+from examples.rl.bsmp.utils import project_entropy, project_entropy_independently
 
 
 class DiagonalGaussianBSMPDistribution(AbstractGaussianTorchDistribution):
@@ -165,7 +165,8 @@ class DiagonalGaussianBSMPSigmaDistribution(AbstractGaussianTorchDistribution):
         log_sigma = self.estimate_log_sigma(context)
         chol = torch.diag_embed(torch.exp(log_sigma), dim1=-2, dim2=-1)
         if self._e_lb is not None:
-            chol = project_entropy(chol, self._e_lb)
+            #chol = project_entropy(chol, self._e_lb)
+            chol = project_entropy_independently(chol, self._e_lb)
         return mu, chol
 
 
