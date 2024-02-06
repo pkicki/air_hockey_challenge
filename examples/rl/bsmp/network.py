@@ -51,7 +51,7 @@ class ConfigurationTimeNetwork(AirHockeyNetwork):
         x = self.fc(x)
         q_prototype = self.q_est(x)
         ds_dt_prototype = self.t_est(x)
-        return torch.cat([q_prototype, ds_dt_prototype], dim=-1)
+        return torch.cat([q_prototype, ds_dt_prototype], dim=-1) / 10.
 
 class ConfigurationTimeNetworkWrapper(ConfigurationTimeNetwork):
     def __init__(self, input_shape, output_shape, params, **kwargs):

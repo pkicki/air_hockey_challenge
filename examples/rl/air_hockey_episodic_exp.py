@@ -50,11 +50,11 @@ def experiment(env: str = '7dof-hit',
                n_epochs: int = 100000,
                n_steps: int = None,
                n_steps_per_fit: int = None,
-               n_episodes: int = 32,
-               n_episodes_per_fit: int = 32,
-               n_eval_episodes: int = 10,
+               n_episodes: int = 16,
+               n_episodes_per_fit: int = 16,
+               n_eval_episodes: int = 2,
 
-               batch_size: int = 32,
+               batch_size: int = 16,
                use_cuda: bool = False,
 
                interpolation_order: int = -1,
@@ -81,7 +81,8 @@ def experiment(env: str = '7dof-hit',
         n_t_cps=kwargs['n_t_cps'] if 'n_t_cps' in kwargs.keys() else 10,
         n_pts_fixed_begin=3,
         n_pts_fixed_end=2,
-        sigma_init=['sigma_init'] if 'sigma_init' in kwargs.keys() else 0.1,
+        sigma_init_q=['sigma_init_q'] if 'sigma_init_q' in kwargs.keys() else 0.02,
+        sigma_init_t=['sigma_init_t'] if 'sigma_init_t' in kwargs.keys() else 0.02,
         sigma_eps=['sigma_eps'] if 'sigma_eps' in kwargs.keys() else 1e-2,
         constraint_lr=kwargs['constraint_lr'] if 'constraint_lr' in kwargs.keys() else 1e-2,
         mu_lr=kwargs['mu_lr'] if 'mu_lr' in kwargs.keys() else 5e-5,
@@ -93,17 +94,17 @@ def experiment(env: str = '7dof-hit',
         target_entropy=kwargs["target_entropy"] if 'target_entropy' in kwargs.keys() else -99.,
         entropy_lr=kwargs["entropy_lr"] if 'entropy_lr' in kwargs.keys() else 1e-4,
         initial_entropy_bonus=kwargs["initial_entropy_bonus"] if 'initial_entropy_bonus' in kwargs.keys() else 3e-3,
-        entropy_lb=kwargs["entropy_lb"] if 'entropy_lb' in kwargs.keys() else -60,
+        entropy_lb=kwargs["entropy_lb"] if 'entropy_lb' in kwargs.keys() else -200,
         initial_entropy_lb=kwargs["initial_entropy_lb"] if 'initial_entropy_lb' in kwargs.keys() else -26,
         entropy_lb_ep=kwargs["entropy_lb_ep"] if 'entropy_lb_ep' in kwargs.keys() else 2000,
     )
 
-    name = (f"ePPO_unstructured_initsigmaq01t015_qdiv1_"
+    name = (f"ePPO_unstructured_"
             f"gamma099_hor150_"
             f"lr{agent_params['mu_lr']}_valuelr{agent_params['value_lr']}_bs{batch_size}_"
             f"constrlr{agent_params['constraint_lr']}_nep{n_episodes}_neppf{n_episodes_per_fit}_"
             f"neppol{agent_params['n_epochs_policy']}_epsppo{agent_params['eps_ppo']}_"
-            f"sigmainit{agent_params['sigma_init']}_entlb{agent_params['entropy_lb']}_"
+            f"sigmainit{agent_params['sigma_init_q']}q_{agent_params['sigma_init_t']}t_entlb{agent_params['entropy_lb']}_"
             f"entlbinit{agent_params['initial_entropy_lb']}_entlbep{agent_params['entropy_lb_ep']}_"
             f"nqcps{agent_params['n_q_cps']}_ntcps{agent_params['n_t_cps']}_seed{seed}")
 
@@ -116,8 +117,9 @@ def experiment(env: str = '7dof-hit',
 
     #wandb_run = wandb.init(project="air_hockey_challenge_fullrange_still", config={}, dir=results_dir, name=name,
     #          group=f'{env}_{alg}_ePPO_verynewreward_dqddqscaling_undiscounted', tags=[str(env)])
-    #wandb_run = wandb.init(project="air_hockey_challenge_single", config={}, dir=results_dir, name=name,
-    #          group=f'{env}_{alg}_ePPO_verynewreward_discounted099', tags=[str(env)])
+
+    wandb_run = wandb.init(project="air_hockey_challenge_single", config={}, dir=results_dir, name=name,
+              group=f'{env}_{alg}_ePPO_unstructured_discounted099', tags=[str(env)])
 
     eval_params = dict(
         n_episodes=n_eval_episodes,
@@ -226,9 +228,10 @@ def experiment(env: str = '7dof-hit',
         J_det, R, success, c_avg, c_max, states, actions, time_to_hit, max_puck_vel = compute_metrics(core, eval_params)
         #assert False
         #wandb_plotting(core, states, actions, epoch)
-        entropy_lb = np.maximum(agent_params["initial_entropy_lb"] +
-            (agent_params["entropy_lb"] - agent_params["initial_entropy_lb"]) * epoch / agent_params["entropy_lb_ep"], agent_params["entropy_lb"])
-        core.agent.bsmp_agent.distribution.set_e_lb(entropy_lb)
+
+        #entropy_lb = np.maximum(agent_params["initial_entropy_lb"] +
+        #    (agent_params["entropy_lb"] - agent_params["initial_entropy_lb"]) * epoch / agent_params["entropy_lb_ep"], agent_params["entropy_lb"])
+        #core.agent.bsmp_agent.distribution.set_e_lb(entropy_lb)
 
         if "logger_callback" in kwargs.keys():
             kwargs["logger_callback"](J_det, J_sto, V_sto, R, E, success, c_avg, c_max)
@@ -443,8 +446,8 @@ def build_agent_BSMPePPO(env_info, **agent_params):
 
     mdp_info = env_info['rl_info']
 
-    sigma_q = 0.1 * torch.ones((n_trainable_q_pts, n_dim))
-    sigma_t = 0.15 * torch.ones((n_trainable_t_pts))
+    sigma_q = agent_params["sigma_init_q"] * torch.ones((n_trainable_q_pts, n_dim))
+    sigma_t = agent_params["sigma_init_t"] * torch.ones((n_trainable_t_pts))
     sigma = torch.cat([sigma_q.reshape(-1), sigma_t]).type(torch.FloatTensor)
 
     mu_approximator = Regressor(TorchApproximator,
