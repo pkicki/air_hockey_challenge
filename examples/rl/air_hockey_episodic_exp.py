@@ -89,7 +89,7 @@ def experiment(env: str = '7dof-hit',
         value_lr=kwargs['value_lr'] if 'value_lr' in kwargs.keys() else 5e-4,
         n_epochs_policy=kwargs['n_epochs_policy'] if 'n_epochs_policy' in kwargs.keys() else 32,
         batch_size=batch_size,
-        eps_ppo=kwargs['eps_ppo'] if 'eps_ppo' in kwargs.keys() else 2e-2,
+        eps_ppo=kwargs['eps_ppo'] if 'eps_ppo' in kwargs.keys() else 1e-1,
         ent_coeff=kwargs['ent_coeff'] if 'ent_coeff' in kwargs.keys() else 0e-3,
         target_entropy=kwargs["target_entropy"] if 'target_entropy' in kwargs.keys() else -99.,
         entropy_lr=kwargs["entropy_lr"] if 'entropy_lr' in kwargs.keys() else 1e-4,
@@ -99,7 +99,7 @@ def experiment(env: str = '7dof-hit',
         entropy_lb_ep=kwargs["entropy_lb_ep"] if 'entropy_lb_ep' in kwargs.keys() else 2000,
     )
 
-    name = (f"ePPO_unstructured_"
+    name = (f"ePPO_unstructured_qdiv50_tdiv5_fixedepsppo_"
             f"gamma099_hor150_"
             f"lr{agent_params['mu_lr']}_valuelr{agent_params['value_lr']}_bs{batch_size}_"
             f"constrlr{agent_params['constraint_lr']}_nep{n_episodes}_neppf{n_episodes_per_fit}_"
@@ -514,7 +514,7 @@ def build_agent_BSMPePPO(env_info, **agent_params):
 
     eppo_params = dict(n_epochs_policy=agent_params["n_epochs_policy"],
                        batch_size=agent_params["batch_size"],
-                       eps_ppo=agent_params["sigma_eps"],
+                       eps_ppo=agent_params["eps_ppo"],
                        target_entropy=agent_params["target_entropy"],
                        entropy_lr=agent_params["entropy_lr"],
                        initial_entropy_bonus=agent_params["initial_entropy_bonus"],
