@@ -197,6 +197,7 @@ def experiment(env: str = '7dof-hit',
             #core.agent.bsmp_agent.set_deterministic(True)
             core.learn(n_episodes=n_episodes, n_episodes_per_fit=n_episodes_per_fit, quiet=quiet)
             #core.agent.bsmp_agent.set_deterministic(False)
+            print("Rs train: ", dataset_callback.get().undiscounted_return)
             J_sto = np.mean(dataset_callback.get().discounted_return)
             init_states = dataset_callback.get().get_init_states()
             context = core.agent.bsmp_agent._context_builder(init_states)
@@ -534,7 +535,7 @@ def compute_metrics(core, eval_params):
 
     J = np.mean(dataset.discounted_return)
     R = np.mean(dataset.undiscounted_return)
-    print(dataset.undiscounted_return)
+    print("Rs val:", dataset.undiscounted_return)
 
     eps_length = dataset.episodes_length
     success = 0
