@@ -31,14 +31,23 @@ class AirHockeyHit(AirHockeyDouble):
         hit_width = self.env_info['table']['width'] / 2 - self.env_info['puck']['radius'] - \
                     self.env_info['mallet']['radius'] * 2
         #self.hit_range = np.array([[-0.7, -0.2], [-hit_width, hit_width]])  # Table Frame
-        #self.hit_range = np.array([[-0.6, -0.4], [-0.1, 0.1]])  # Table Frame
-        self.hit_range = np.array([[-0.5, -0.5], [0.0, 0.0]])  # Table Frame
+        self.hit_range = np.array([[-0.7, -0.2], [-0.35, 0.35]])  # Table Frame
+        #self.hit_range = np.array([[-0.6, -0.3], [-0.3, 0.3]])  # Table Frame
+        #self.hit_range = np.array([[-0.5, -0.5], [0.0, 0.0]])  # Table Frame
+        #self.hit_range = np.array([[-0.5, -0.5], [-0.3, -0.3]])  # Table Frame
         self.init_velocity_range = (0, 0.5)  # Table Frame
         self.init_ee_range = np.array([[0.60, 1.25], [-0.4, 0.4]])  # Robot Frame
         self.absorb_type = AbsorbType.NONE
         self.has_hit = False
         self.hit_time = None
         self.puck_velocity = None
+
+        self.i = 0
+        #grid = np.stack(np.meshgrid(np.linspace(-0.6, -0.3, 11), np.linspace(-0.3, 0.3, 11)), axis=-1)
+        eps = 0.0#1
+        grid = np.stack(np.meshgrid(np.linspace(self.hit_range[0, 0] + eps, self.hit_range[0, 1] - eps, 16),
+                                    np.linspace(self.hit_range[1, 0] + eps, self.hit_range[1, 1] - eps, 16)), axis=-1)
+        self.puck_poses = grid.reshape(-1, 2)
 
         if opponent_agent is not None:
             self._opponent_agent = opponent_agent.draw_action
@@ -52,6 +61,8 @@ class AirHockeyHit(AirHockeyDouble):
     def setup(self, obs):
         # Initial position of the puck
         puck_pos = np.random.rand(2) * (self.hit_range[:, 1] - self.hit_range[:, 0]) + self.hit_range[:, 0]
+        #puck_pos = self.puck_poses[self.i]
+        #self.i += 1
 
         self._write_data("puck_x_pos", puck_pos[0])
         self._write_data("puck_y_pos", puck_pos[1])
@@ -105,73 +116,21 @@ class AirHockeyHit(AirHockeyDouble):
 
         # Define goal position
         goal = np.array([0.98, 0])
-        # Compute the vector that shoot the puck directly to the goal
-        vec_puck_goal = (goal - puck_pos[:2]) / np.linalg.norm(goal - puck_pos[:2])
-
-        # width of table minus radius of puck
-        effective_width = self.env_info['table']['width'] / 2 - self.env_info['puck']['radius']
-
-        # Calculate bounce point by assuming incoming angle = outgoing angle
-        w = (abs(puck_pos[1]) * goal[0] + goal[1] * puck_pos[0] - effective_width * puck_pos[0] -
-             effective_width * goal[0]) / (abs(puck_pos[1]) + goal[1] - 2 * effective_width)
-        side_point = np.array([w, np.copysign(effective_width, puck_pos[1])])
-
-        # Compute the vector that shoot puck with a bounce to the wall
-        vec_puck_side = (side_point - puck_pos[:2]) / \
-                        np.linalg.norm(side_point - puck_pos[:2])
 
         if not self.has_hit:
             self.has_hit = self._has_hit(state)
 
-        #if absorbing or mdp._data.time < mdp.env_info['dt'] * 2:
-        if absorbing:
-            # If the hit scores
-            actual_time = self._data.time
-            end_time = self.info.dt * self.info.horizon
-            time_left = end_time - actual_time
-            energy = np.sum(np.square(puck_vel[:2]))
-            energy_integral = energy * time_left
-            energy_integral = 100.
-            if self.absorb_type == AbsorbType.GOAL:
-                r = energy_integral
-            elif self.absorb_type == AbsorbType.UP or self.absorb_type == AbsorbType.BOTTOM:
-                reward_sign = 1. if self.absorb_type == AbsorbType.UP else -1.
-                miss_dist = np.abs(puck_pos[1]) - self.env_info['table']['goal_width'] / 2 
-                mul = np.maximum(miss_dist, 0)
-                r = reward_sign * energy_integral / (1 + 10. * mul)
-            elif self.absorb_type == AbsorbType.LEFT or self.absorb_type == AbsorbType.RIGHT:
-                sign = 1. if self.absorb_type == AbsorbType.LEFT else -1.
-                goal_x = goal[0] if puck_vel[0] > 0. else -goal[0]
-                reward_sign = 1. if puck_vel[0] > 0. else -1.
-                time2goalx = (goal_x - puck_pos[0]) / (puck_vel[0] + 1e-8)
-                yend = puck_pos[1] + sign * np.abs(puck_vel[1]) * time2goalx
-                miss_dist = np.abs(yend) - self.env_info['table']['goal_width'] / 2 
-                mul = np.maximum(miss_dist, 0)
-                r = reward_sign * energy_integral / (1 + 10. * mul)
-            else:
-                print(self.absorb_type)
-                r = 0.
-            self.has_hit = False
-        else:
-            # If the puck has not yet been hit, encourage the robot to get closer to the puck
-            if not self.has_hit:
-                ee_pos = self.get_ee()[0][:2]
-                dist_ee_puck = np.linalg.norm(puck_pos[:2] - ee_pos)
-                r = - dist_ee_puck
-            else:
-                #v = np.sum(np.square(puck_vel[:2]))
-                v = np.linalg.norm(puck_vel[:2])
+        goal_dist = np.linalg.norm(goal - puck_pos[:2])
+        r = np.exp(-10. * goal_dist**2)
 
-                if puck_vel[0] > 0.:
-                    time2goalx = (goal[0] - puck_pos[0]) / (puck_vel[0] + 1e-8)
-                    yend = puck_pos[1] + puck_vel[1] * time2goalx
-                    miss_dist = np.abs(yend) - self.env_info['table']['goal_width'] / 2 
-                    mul = np.maximum(miss_dist, 0)
-                    r = v / (1. + 10. * mul)
-                else:
-                    # TODO think what if the puck goes wrong direction
-                    r = puck_vel[0]
-        return r
+        factor = 1.
+        if absorbing:
+            t = self._data.time
+            it = int(t / self.info.dt)
+            horizon = self.info.horizon
+            gamma = self.info.gamma 
+            factor = (1 - gamma ** (horizon - it + 1)) / (1 - gamma)
+        return r * factor
 
     #def is_absorbing(self, obs):
     #    puck_pos, puck_vel = self.get_puck(obs)

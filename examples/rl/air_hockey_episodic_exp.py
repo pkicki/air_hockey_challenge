@@ -198,6 +198,7 @@ def experiment(env: str = '7dof-hit',
             core.learn(n_episodes=n_episodes, n_episodes_per_fit=n_episodes_per_fit, quiet=quiet)
             #core.agent.bsmp_agent.set_deterministic(False)
             print("Rs train: ", dataset_callback.get().undiscounted_return)
+            print("Js train: ", dataset_callback.get().discounted_return)
             J_sto = np.mean(dataset_callback.get().discounted_return)
             init_states = dataset_callback.get().get_init_states()
             context = core.agent.bsmp_agent._context_builder(init_states)
@@ -408,7 +409,7 @@ def build_agent_BSMPePPO_return(env_info, **agent_params):
 
     eppo_params = dict(n_epochs_policy=agent_params["n_epochs_policy"],
                        batch_size=agent_params["batch_size"],
-                       eps_ppo=agent_params["sigma_eps"],
+                       eps_ppo=agent_params["eps_ppo"],
                        target_entropy=agent_params["target_entropy"],
                        entropy_lr=agent_params["entropy_lr"],
                        initial_entropy_bonus=agent_params["initial_entropy_bonus"],
@@ -536,6 +537,7 @@ def compute_metrics(core, eval_params):
     J = np.mean(dataset.discounted_return)
     R = np.mean(dataset.undiscounted_return)
     print("Rs val:", dataset.undiscounted_return)
+    print("Js val:", dataset.discounted_return)
 
     eps_length = dataset.episodes_length
     success = 0

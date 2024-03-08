@@ -9,8 +9,8 @@ class BSMPUnstructuredPolicy(BSMPPolicy):
     def compute_trajectory_from_theta(self, theta, context):
         q_0, q_d, q_dot_0, q_dot_d, q_ddot_0, q_ddot_d, puck = self.unpack_context(context)
         trainable_q_cps, trainable_t_cps = self.extract_qt(theta)
-        trainable_q_cps = trainable_q_cps / 50.
-        trainable_t_cps = trainable_t_cps / 5.
+        trainable_q_cps = trainable_q_cps / 100.
+        trainable_t_cps = trainable_t_cps / 10.
         middle_trainable_q_pts = torch.tanh(trainable_q_cps[:, :-1]) * np.pi
         trainable_q_d = torch.tanh(trainable_q_cps[:, -1:]) * np.pi
 
@@ -55,7 +55,9 @@ class BSMPUnstructuredPolicy(BSMPPolicy):
         #    plt.plot(t_, q_ddot_[:, i])
         #    plt.plot([t_[0], t_[-1]], [qddl[i], qddl[i]], 'r--')
         #    plt.plot([t_[0], t_[-1]], [-qddl[i], -qddl[i]], 'r--')
-        #plt.show()
+        ##plt.show()
+        #plt.savefig(f"/air_hockey_challenge/examples/rl/imgs/{self._traj_no:04d}.png")
+        #plt.clf()
 
         #xyz = []
         #for k in range(q.shape[1]):
@@ -67,6 +69,12 @@ class BSMPUnstructuredPolicy(BSMPPolicy):
         #plt.subplot(122)
         #plt.plot(xyz[:, 2])
         #plt.show()
+
+        #plt.clf()
+        #t_ = t.detach().numpy()[0]
+        #plt.plot(t_)
+        #plt.ylim(0., 1.2)
+        #plt.savefig(f"/air_hockey_challenge/examples/rl/imgs/{self._traj_no:04d}.png")
 
         self._traj_no += 1
         return q, q_dot, q_ddot, t, dt, duration

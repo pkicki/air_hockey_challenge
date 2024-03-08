@@ -167,3 +167,6 @@ examples/rl/trained_models/
 examples/rl/bsmp/bspline__*.npy
 .gitignore
 examples/rl/imgs/
+*.csv
+*.npy
+*.png
