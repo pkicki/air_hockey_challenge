@@ -34,19 +34,21 @@ class AirHockeyHit(AirHockeyDouble):
         self.hit_range = np.array([[-0.7, -0.2], [-0.35, 0.35]])  # Table Frame
         #self.hit_range = np.array([[-0.6, -0.3], [-0.3, 0.3]])  # Table Frame
         #self.hit_range = np.array([[-0.5, -0.5], [0.0, 0.0]])  # Table Frame
-        #self.hit_range = np.array([[-0.5, -0.5], [-0.3, -0.3]])  # Table Frame
-        self.init_velocity_range = (0, 0.5)  # Table Frame
+        #self.hit_range = np.array([[-0.3, -0.3], [-0.3, -0.3]])  # Table Frame
+        #self.hit_range = np.array([[-0.5, -0.5], [-0.0, -0.0]])  # Table Frame
+        self.init_velocity_range = (0, 0.3)  # Table Frame
         self.init_ee_range = np.array([[0.60, 1.25], [-0.4, 0.4]])  # Robot Frame
+        self.t_reach_range = (1.0, 2.0)
         self.absorb_type = AbsorbType.NONE
         self.has_hit = False
         self.hit_time = None
         self.puck_velocity = None
 
         self.i = 0
-        #grid = np.stack(np.meshgrid(np.linspace(-0.6, -0.3, 11), np.linspace(-0.3, 0.3, 11)), axis=-1)
+        grid = np.stack(np.meshgrid(np.linspace(-0.6, -0.3, 11), np.linspace(-0.3, 0.3, 11)), axis=-1)
         eps = 0.0#1
-        grid = np.stack(np.meshgrid(np.linspace(self.hit_range[0, 0] + eps, self.hit_range[0, 1] - eps, 16),
-                                    np.linspace(self.hit_range[1, 0] + eps, self.hit_range[1, 1] - eps, 16)), axis=-1)
+        grid = np.stack(np.meshgrid(np.linspace(self.hit_range[0, 0] + eps, self.hit_range[0, 1] - eps, 11),
+                                    np.linspace(self.hit_range[1, 0] + eps, self.hit_range[1, 1] - eps, 11)), axis=-1)
         self.puck_poses = grid.reshape(-1, 2)
 
         if opponent_agent is not None:
@@ -61,14 +63,11 @@ class AirHockeyHit(AirHockeyDouble):
     def setup(self, obs):
         # Initial position of the puck
         puck_pos = np.random.rand(2) * (self.hit_range[:, 1] - self.hit_range[:, 0]) + self.hit_range[:, 0]
+        puck_yaw = np.random.uniform(-np.pi, np.pi)
+        puck_vel = np.zeros(3)
         #puck_pos = self.puck_poses[self.i]
         #self.i += 1
 
-        self._write_data("puck_x_pos", puck_pos[0])
-        self._write_data("puck_y_pos", puck_pos[1])
-        self.absorb_type = AbsorbType.NONE
-        self.has_hit = False
-        self.hit_time = None
         #self._write_data("puck_x_pos", -0.5)
         #self._write_data("puck_y_pos", 0.0)
         #self._write_data("puck_x_vel", self.v * np.cos(self.theta))
@@ -78,17 +77,31 @@ class AirHockeyHit(AirHockeyDouble):
         #self.v += 0.2
 
         if self.moving_init:
-            lin_vel = np.random.uniform(self.init_velocity_range[0], self.init_velocity_range[1])
-            angle = np.random.uniform(-np.pi / 2 - 0.1, np.pi / 2 + 0.1)
-            puck_vel = np.zeros(3)
-            puck_vel[0] = -np.cos(angle) * lin_vel
-            puck_vel[1] = np.sin(angle) * lin_vel
-            puck_vel[2] = np.random.uniform(-2, 2, 1)
+            init_vel_mag = np.random.uniform(self.init_velocity_range[0], self.init_velocity_range[1])
+            init_vel_angle = np.random.uniform(-np.pi, np.pi / 2)
+            init_vel = np.array([np.cos(init_vel_angle), np.sin(init_vel_angle)]) * init_vel_mag
 
-            self._write_data("puck_x_vel", puck_vel[0])
-            self._write_data("puck_y_vel", puck_vel[1])
-            self._write_data("puck_yaw_vel", puck_vel[2])
+            t_reach_x = (np.array([self.hit_range[0, 0], self.hit_range[0, 1]]) - puck_pos[0]) / init_vel[0]
+            t_reach_y = (np.array([self.hit_range[1, 0], self.hit_range[1, 1]]) - puck_pos[1]) / init_vel[1]
+            t_reach = np.concatenate([t_reach_x, t_reach_y])
+            t_reach = t_reach[t_reach > 0]
+            if np.any(t_reach < 1.5):
+                init_vel *= np.min(t_reach) / 1.5
 
+            puck_vel[0] = init_vel[0]
+            puck_vel[1] = init_vel[1]
+            puck_vel[2] = np.random.uniform(-5, 5)
+
+
+        self._write_data("puck_x_pos", puck_pos[0])
+        self._write_data("puck_y_pos", puck_pos[1])
+        self._write_data("puck_yaw_pos", puck_yaw)
+        self._write_data("puck_x_vel", puck_vel[0])
+        self._write_data("puck_y_vel", puck_vel[1])
+        self._write_data("puck_yaw_vel", puck_vel[2])
+        self.absorb_type = AbsorbType.NONE
+        self.has_hit = False
+        self.hit_time = None
         super(AirHockeyHit, self).setup(obs)
     
     def _create_info_dictionary(self, obs):
@@ -121,7 +134,7 @@ class AirHockeyHit(AirHockeyDouble):
             self.has_hit = self._has_hit(state)
 
         goal_dist = np.linalg.norm(goal - puck_pos[:2])
-        r = np.exp(-10. * goal_dist**2)
+        r = np.exp(-2. * goal_dist**2)
 
         factor = 1.
         if absorbing:
