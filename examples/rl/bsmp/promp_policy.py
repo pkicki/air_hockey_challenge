@@ -37,9 +37,13 @@ class ProMPPolicy(Policy):
         self.dN = np.stack([self.dphi(i) for i in np.linspace(0, 1, self.horizon)], axis=0)[None]
 
         sum = np.sum(self.N, axis=-1, keepdims=True)
+        dN = self.dN# / sum
+        dsum = np.sum(dN, axis=-1, keepdims=True)
+
+        self.dN = (dN * sum - self.N * dsum) / sum**2
         self.N = self.N / sum
-        self.dN = self.dN / sum
-        #dN_ = np.diff(self.N, axis=1)
+        dN_ = np.diff(self.N, axis=1)
+
         #plt.subplot(221)
         #for i in range(11):
         #    plt.plot(self.N[0, :, i])
