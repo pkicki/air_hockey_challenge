@@ -138,11 +138,11 @@ class BSMPPolicy(Policy):
         trainable_q_cps, trainable_t_cps = self.extract_qt(theta)
         trainable_t_cps = trainable_t_cps #+ torch.log(1.33 * torch.ones_like(trainable_t_cps))
         #trainable_q_cps = torch.tanh(trainable_q_cps/10.) * np.pi
-        middle_trainable_q_pts = torch.tanh(trainable_q_cps[:, :-3]/10.) * np.pi
-        trainable_q_d = torch.tanh(trainable_q_cps[:, -1:]/30.) * np.pi
+        middle_trainable_q_pts = torch.tanh(trainable_q_cps[:, :-3]/50.) * np.pi
+        trainable_q_d = torch.tanh(trainable_q_cps[:, -1:]/150.) * np.pi
         #delta_xy_d = torch.tanh(trainable_q_cps[:, -1, -2:]/10.) * 0.3
-        trainable_q_ddot_d = torch.tanh(trainable_q_cps[:, -3:-2]*5.) * torch.tensor(self.joint_acc_limit)
-        trainable_q_dot_d = torch.tanh(trainable_q_cps[:, -2:-1]/10.) * 2. * torch.tensor(self.joint_vel_limit)
+        trainable_q_ddot_d = torch.tanh(trainable_q_cps[:, -3:-2]*1.) * torch.tensor(self.joint_acc_limit)
+        trainable_q_dot_d = torch.tanh(trainable_q_cps[:, -2:-1]/50.) * 2. * torch.tensor(self.joint_vel_limit)
         #trainable_delta_angle = torch.tanh(trainable_q_cps[:, -2:-1, -1]/10.) * np.pi/2.
         #trainable_scale = torch.sigmoid(trainable_q_cps[:, -2, -2])[:, None, None]
 
