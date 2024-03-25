@@ -15,7 +15,8 @@ from examples.rl.bsmp.bsmp_stopping_policy import BSMPStoppingPolicy
 from examples.rl.bsmp.bsmp_unstructured_policy import BSMPUnstructuredPolicy
 from examples.rl.bsmp.bspline import BSpline
 from examples.rl.bsmp.context_builder import IdentityContextBuilder
-from examples.rl.bsmp.network import ConfigurationTimeNetworkWrapper, LogSigmaNetworkWrapper
+from examples.rl.bsmp.network import ConfigurationNetworkWrapper, ConfigurationTimeNetworkWrapper, LogSigmaNetworkWrapper
+from examples.rl.bsmp.promp_policy import ProMPPolicy
 from examples.rl.bsmp.utils import equality_loss, limit_loss, unpack_data_airhockey
 from examples.rl.bsmp.value_network import ValueNetwork
 
@@ -45,7 +46,8 @@ torch.Tensor.__repr__ = custom_repr
 @single_experiment
 def experiment(env: str = '7dof-hit',
                n_envs: int = 1,
-               alg: str = "bsmp_eppo_unstructured",
+               alg: str = "promp",
+               #alg: str = "bsmp_eppo_unstructured",
                #alg: str = "bsmp_eppo_return",
                n_epochs: int = 100000,
                n_steps: int = None,
@@ -338,6 +340,8 @@ def agent_builder(env_info, agent_params):
         bsmp_agent = build_agent_BSMPePPO_return(env_info, **agent_params)
     elif alg == "bsmp_eppo_unstructured":
         bsmp_agent = build_agent_BSMPePPO(env_info, **agent_params)
+    elif alg == "promp":
+        bsmp_agent = build_agent_ProMPePPO(env_info, **agent_params)
     else:
         raise ValueError(f"Unknown algorithm: {alg}")
     return BSMPAgent(env_info, bsmp_agent)
@@ -477,6 +481,101 @@ def build_agent_BSMPePPO(env_info, **agent_params):
         policy = BSMPUnstructuredPolicy(env_info, env_info["dt"], n_q_pts, n_dim, n_t_pts, n_pts_fixed_begin, n_pts_fixed_end, robot_constraints)
     else:
         policy = BSMPPolicy(env_info, env_info["dt"], n_q_pts, n_dim, n_t_pts, n_pts_fixed_begin, n_pts_fixed_end, robot_constraints)
+    #sigma = agent_params["sigma_init"] * torch.ones(n_trainable_pts)
+    #dist = DiagonalGaussianBSMPSigmaDistribution(mu_approximator, log_sigma_approximator)
+    #dist = DiagonalGaussianBSMPDistribution(mu_approximator, sigma)
+    #sigma = agent_params["sigma_init"]**2 * torch.eye(n_trainable_pts)
+    #sigma_q_init = agent_params["sigma_init"] / 10.
+    #sigma_q = sigma_q_init * np.ones((n_trainable_q_pts, n_dim))
+    ##sigma_q[-1] /= 2.
+    #sigma_t_init = agent_params["sigma_init"]
+    #sigma_t = sigma_t_init * np.ones((n_trainable_t_pts))
+    ##sigma_t[0] /= 2.
+    ##sigma_t[-1] /= 2.
+
+    #sigma = torch.tensor(np.concatenate([sigma_q.reshape(-1), sigma_t]), dtype=torch.float32)
+    #sigma = torch.diag(sigma**2)
+    #dist = CholeskyGaussianTorchDistribution(mu, sigma)
+
+    #dist = DiagonalGaussianTorchDistribution(mu, sigma)
+    #dist = DiagonalGaussianBSMPDistribution(mu_approximator, sigma)
+    dist = DiagonalGaussianBSMPSigmaDistribution(mu_approximator, log_sigma_approximator, agent_params["entropy_lb"])
+    #entropy_weights = torch.tensor([1e0, 1e0, 1e0, 1e0, 1e0])
+    #splits = [(n_trainable_q_pts - 3) * n_dim, (n_trainable_q_pts - 2) * n_dim, (n_trainable_q_pts - 1) * n_dim, n_trainable_q_pts * n_dim]
+    #dist = DiagonalMultiGaussianBSMPSigmaDistribution(mu_approximator, log_sigma_approximator, entropy_weights, splits)
+
+
+    #sigma_optimizer = AdaptiveOptimizer(eps=0.3)
+    #mu_optimizer = torch.optim.Adam(self.mu_approximator.model.network.parameters(), lr=agent_params["mu_lr"])
+    optimizer = {'class': optim.Adam,
+                 'params': {'lr': agent_params["mu_lr"],
+                            'weight_decay': 0.0}}
+
+    value_function_optimizer = optim.Adam(value_function_approximator.parameters(), lr=agent_params["value_lr"])
+
+    context_builder = None
+    if dist.is_contextual:
+        context_builder = IdentityContextBuilder()
+
+    eppo_params = dict(n_epochs_policy=agent_params["n_epochs_policy"],
+                       batch_size=agent_params["batch_size"],
+                       eps_ppo=agent_params["eps_ppo"],
+                       target_entropy=agent_params["target_entropy"],
+                       entropy_lr=agent_params["entropy_lr"],
+                       initial_entropy_bonus=agent_params["initial_entropy_bonus"],
+                       #ent_coeff=agent_params["ent_coeff"],
+                       context_builder=context_builder
+                       )
+
+    agent = BSMPePPO(mdp_info, dist, policy, optimizer, value_function_approximator, value_function_optimizer,
+                     robot_constraints,
+                     agent_params["constraint_lr"], **eppo_params)
+    return agent
+
+
+def build_agent_ProMPePPO(env_info, **agent_params):
+
+    table_constraints = env_info["constraints"].get("ee_constr")
+    robot_constraints = dict(
+        q = env_info["robot"]["joint_pos_limit"][-1],
+        q_dot = env_info["robot"]["joint_vel_limit"][-1],
+        q_ddot = env_info["robot"]["joint_acc_limit"][-1],
+        z_ee = (table_constraints.z_lb + table_constraints.z_ub) / 2.,
+        x_ee_lb = table_constraints.x_lb,
+        y_ee_lb = table_constraints.y_lb,
+        y_ee_ub = table_constraints.y_ub,
+    )
+    n_q_pts = agent_params["n_q_cps"]
+    n_dim = agent_params["n_dim"]
+    n_trainable_q_pts = n_q_pts - 1
+    n_trainable_pts = n_dim * n_trainable_q_pts
+
+    mdp_info = env_info['rl_info']
+
+    sigma = agent_params["sigma_init_q"] * torch.ones(n_trainable_pts)
+
+    mu_approximator = Regressor(TorchApproximator,
+                                network=ConfigurationNetworkWrapper,
+                                batch_size=1,
+                                params={
+                                        "input_space": mdp_info.observation_space,
+                                        },
+                                input_shape=(mdp_info.observation_space.shape[0],),
+                                output_shape=(n_trainable_pts,))
+    log_sigma_approximator = Regressor(TorchApproximator,
+                                network=LogSigmaNetworkWrapper,
+                                batch_size=1,
+                                params={
+                                        "input_space": mdp_info.observation_space,
+                                        "init_sigma": sigma,
+                                        },
+                                input_shape=(mdp_info.observation_space.shape[0],),
+                                output_shape=(n_trainable_pts,))
+
+    value_function_approximator = ValueNetwork(mdp_info.observation_space)
+
+    policy = ProMPPolicy(env_info, n_q_pts, n_dim)
+
     #sigma = agent_params["sigma_init"] * torch.ones(n_trainable_pts)
     #dist = DiagonalGaussianBSMPSigmaDistribution(mu_approximator, log_sigma_approximator)
     #dist = DiagonalGaussianBSMPDistribution(mu_approximator, sigma)

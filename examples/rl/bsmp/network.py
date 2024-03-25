@@ -81,3 +81,27 @@ class LogSigmaNetwork(AirHockeyNetwork):
 class LogSigmaNetworkWrapper(LogSigmaNetwork):
     def __init__(self, input_shape, output_shape, params, **kwargs):
         super(LogSigmaNetworkWrapper, self).__init__(input_shape, output_shape, params["input_space"], params["init_sigma"])
+        
+
+class ConfigurationNetwork(AirHockeyNetwork):
+    def __init__(self, input_shape, output_shape, input_space):
+        super(ConfigurationNetwork, self).__init__(input_space)
+
+        activation = torch.nn.Tanh()
+        W = 256
+        self.fc = torch.nn.Sequential(
+            torch.nn.Linear(input_shape[0], W), activation,
+            torch.nn.Linear(W, W), activation,
+            torch.nn.Linear(W, W), activation,
+            torch.nn.Linear(W, W), activation,
+            torch.nn.Linear(W, output_shape[0])#, activation,
+        )
+
+    def __call__(self, x):
+        x, q0, qd, dq0, dqd, ddq0, ddqd = self.prepare_data(x)
+        x = self.fc(x)
+        return x
+
+class ConfigurationNetworkWrapper(ConfigurationNetwork):
+    def __init__(self, input_shape, output_shape, params, **kwargs):
+        super(ConfigurationNetworkWrapper, self).__init__(input_shape, output_shape, params["input_space"])

@@ -14,7 +14,7 @@ class BSMPUnstructuredPolicy(BSMPPolicy):
         middle_trainable_q_pts = torch.tanh(trainable_q_cps[:, :-1]) * np.pi
         trainable_q_d = torch.tanh(trainable_q_cps[:, -1:]) * np.pi
 
-        x_des = np.array([1.06, 0., self.desired_ee_z])
+        x_des = np.array([1.31, 0., self.desired_ee_z])
         _, q_d_bias = self.optimizer.inverse_kinematics(x_des, q_0.detach().numpy()[0, 0])
 
         q_d = trainable_q_d + torch.tensor(q_d_bias)[None, None]
