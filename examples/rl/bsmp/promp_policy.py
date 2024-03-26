@@ -231,6 +231,7 @@ class ProMPPolicy(Policy):
             #q_ddot = np.zeros_like(q)
         policy_state[0] += 1
         #action = np.stack([q, q_dot, q_ddot], axis=-2) 
+        q_dot = np.clip(q_dot, -self.joint_vel_limit, self.joint_vel_limit)
         action = np.stack([q, q_dot], axis=-2) 
         action = torch.tensor(action, dtype=torch.float32)
         return action, torch.tensor(policy_state)
