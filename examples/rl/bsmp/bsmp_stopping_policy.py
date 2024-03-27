@@ -28,7 +28,7 @@ class BSMPStoppingPolicy(BSMPPolicy):
         )
 
     def compute_trajectory_from_theta(self, theta, context):
-        q_0, q_d, q_dot_0, q_dot_d, q_ddot_0, q_ddot_d, puck = self.unpack_context(context)
+        q_0, q_d, q_dot_0, q_dot_d, q_ddot_0, q_ddot_d, puck, puck_dot = self.unpack_context(context)
         trainable_q_hit_cps, trainable_t_hit_cps, trainable_q_stop_cps, trainable_t_stop_cps, xy_stop = self.extract_qt(theta)
 
         middle_trainable_q_hit_pts = torch.tanh(trainable_q_hit_cps[:, :-3]/10.) * np.pi

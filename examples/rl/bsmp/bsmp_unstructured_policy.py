@@ -7,7 +7,7 @@ from examples.rl.bsmp.bsmp_policy import BSMPPolicy
 
 class BSMPUnstructuredPolicy(BSMPPolicy):
     def compute_trajectory_from_theta(self, theta, context):
-        q_0, q_d, q_dot_0, q_dot_d, q_ddot_0, q_ddot_d, puck = self.unpack_context(context)
+        q_0, q_d, q_dot_0, q_dot_d, q_ddot_0, q_ddot_d, puck, puck_dot = self.unpack_context(context)
         trainable_q_cps, trainable_t_cps = self.extract_qt(theta)
         trainable_q_cps = trainable_q_cps / 100.
         trainable_t_cps = trainable_t_cps / 10.
