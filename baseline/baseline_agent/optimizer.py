@@ -92,6 +92,8 @@ class TrajectoryOptimizer:
         b_ub = np.concatenate([-lb, ub])
         res = scipy.optimize.linprog(c, A_ub=A_ub, b_ub=b_ub)
         alpha = res.x
+        if alpha is None or alpha.shape[0] != 5:
+            alpha = np.zeros(5)
         q_dot_null = nullocJ @ alpha
         q_dot_base = np.linalg.pinv(J) @ v_des.T
         q_dot = q_dot_base[:, 0] + q_dot_null
