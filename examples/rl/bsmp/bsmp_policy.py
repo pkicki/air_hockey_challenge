@@ -152,12 +152,15 @@ class BSMPPolicy(Policy):
         duration = np.sum(dt, axis=-1, keepdims=True)
         #x_cur = forward_kinematics(self.env_info['robot']['robot_model'], self.env_info['robot']['robot_data'], q_0[0, 0])[0]
 
-        puck_pos = puck.detach().numpy()
-        expected_puck_pos = puck_pos + puck_dot.detach().numpy() * duration
+        puck_pos = puck.detach().numpy()[:, :2]
+        puck_dot = puck_dot.detach().numpy()[:, :2]
+        expected_puck_pos = puck_pos + puck_dot * duration
+        expected_puck_pos = np.clip(expected_puck_pos, [0.81, -0.35], [1.31, 0.35])
         puck_pos = expected_puck_pos
-        goal = np.array([2.484, 0., 0.])
+        goal = np.array([2.484, 0.])
         # Compute the vector that shoot the puck directly to the goal
         vec_puck_goal = (goal - puck_pos) / np.linalg.norm(goal - puck_pos)
+        vec_puck_goal = np.concatenate([vec_puck_goal, np.zeros_like(vec_puck_goal)[..., -1:]], axis=-1)
         #r1 = torch.cat([torch.cos(trainable_delta_angle), -torch.sin(trainable_delta_angle), torch.zeros_like(trainable_delta_angle)], axis=-1)
         #r2 = torch.cat([torch.sin(trainable_delta_angle), torch.cos(trainable_delta_angle), torch.zeros_like(trainable_delta_angle)], axis=-1)
         #r3 = torch.cat([torch.zeros_like(trainable_delta_angle), torch.zeros_like(trainable_delta_angle), torch.ones_like(trainable_delta_angle)], axis=-1)
@@ -167,7 +170,8 @@ class BSMPPolicy(Policy):
 
         #x_des = puck_pos - (self.env_info['mallet']['radius'] + self.env_info['puck']['radius']) * v_des
         x_des = puck_pos# - (self.env_info['mallet']['radius'] + self.env_info['puck']['radius'] - 0.01) * v_des
-        x_des[:, -1] = self.desired_ee_z# - 0.03# - self.env_info['robot']['universal_height']
+        x_des = np.concatenate([x_des, np.ones_like(x_des)[..., -1:] * self.desired_ee_z], axis=-1)
+        #x_des[:, -1] = self.desired_ee_z# - 0.03# - self.env_info['robot']['universal_height']
         x_des = x_des.astype(np.float64)
         #x_des[:, :2] = x_des[:, :2] + delta_xy_d.detach().numpy()
 
