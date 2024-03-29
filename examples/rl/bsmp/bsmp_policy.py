@@ -149,7 +149,7 @@ class BSMPPolicy(Policy):
 
         dtau_dt = np.exp(self._t_bsp.N @ trainable_t_cps.detach().numpy())
         dt = 1. / dtau_dt[..., 0] / dtau_dt.shape[-2]
-        duration = np.sum(dt, axis=-1)
+        duration = np.sum(dt, axis=-1, keepdims=True)
         #x_cur = forward_kinematics(self.env_info['robot']['robot_model'], self.env_info['robot']['robot_data'], q_0[0, 0])[0]
 
         puck_pos = puck.detach().numpy()
