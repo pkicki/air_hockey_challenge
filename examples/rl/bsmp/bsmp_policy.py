@@ -136,21 +136,24 @@ class BSMPPolicy(Policy):
     def compute_trajectory_from_theta(self, theta, context):
         q_0, q_d, q_dot_0, q_dot_d, q_ddot_0, q_ddot_d, puck, puck_dot = self.unpack_context(context)
         trainable_q_cps, trainable_t_cps = self.extract_qt(theta)
-        trainable_t_cps = trainable_t_cps / 10. #+ torch.log(1.33 * torch.ones_like(trainable_t_cps))
+        trainable_t_cps = trainable_t_cps / 1. #+ torch.log(1.33 * torch.ones_like(trainable_t_cps))
         #trainable_q_cps = torch.tanh(trainable_q_cps/10.) * np.pi
-        middle_trainable_q_pts = torch.tanh(trainable_q_cps[:, :-3]/100.) * np.pi
-        trainable_q_d = torch.tanh(trainable_q_cps[:, -1:]/100.) * np.pi
+        middle_trainable_q_pts = torch.tanh(trainable_q_cps[:, :-3]/50.) * np.pi
+        trainable_q_d = torch.tanh(trainable_q_cps[:, -1:]/150.) * np.pi
         #delta_xy_d = torch.tanh(trainable_q_cps[:, -1, -2:]/10.) * 0.3
-        trainable_q_ddot_d = torch.tanh(trainable_q_cps[:, -3:-2]/100.) * torch.tensor(self.joint_acc_limit)
-        trainable_q_dot_d = torch.tanh(trainable_q_cps[:, -2:-1]/100.) * 2. * torch.tensor(self.joint_vel_limit)
+        trainable_q_ddot_d = torch.tanh(trainable_q_cps[:, -3:-2]/1.) * torch.tensor(self.joint_acc_limit)
+        trainable_q_dot_d = torch.tanh(trainable_q_cps[:, -2:-1]/50.) * 2. * torch.tensor(self.joint_vel_limit)
         #trainable_delta_angle = torch.tanh(trainable_q_cps[:, -2:-1, -1]/10.) * np.pi/2.
         #trainable_scale = torch.sigmoid(trainable_q_cps[:, -2, -2])[:, None, None]
 
 
+        dtau_dt = np.exp(self._t_bsp.N @ trainable_t_cps.detach().numpy())
+        dt = 1. / dtau_dt[..., 0] / dtau_dt.shape[-2]
+        duration = np.sum(dt, axis=-1)
         #x_cur = forward_kinematics(self.env_info['robot']['robot_model'], self.env_info['robot']['robot_data'], q_0[0, 0])[0]
 
         puck_pos = puck.detach().numpy()
-        expected_puck_pos = puck_pos + puck_dot.detach().numpy() * 1.0
+        expected_puck_pos = puck_pos + puck_dot.detach().numpy() * duration
         puck_pos = expected_puck_pos
         goal = np.array([2.484, 0., 0.])
         # Compute the vector that shoot the puck directly to the goal
@@ -186,6 +189,7 @@ class BSMPPolicy(Policy):
         #q_dot_d = trainable_q_cps[:, -2:-1]
         #q_ddot_d = trainable_q_cps[:, -3:-2]
         #trainable_q_cps = trainable_q_cps[:, :-3]
+        trainable_q_ddot_d = torch.tanh(trainable_q_cps[:, -3:-2] / (10. * torch.sqrt(torch.abs(q_dot_d)))) * torch.tensor(self.joint_acc_limit)
         q_ddot_d = trainable_q_ddot_d
         q1, q2, qm2, qm1 = self.compute_boundary_control_points_exp(trainable_t_cps, q_0, q_dot_0, q_ddot_0,
                                                                     q_d, q_dot_d, q_ddot_d)
