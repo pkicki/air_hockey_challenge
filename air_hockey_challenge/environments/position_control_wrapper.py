@@ -121,6 +121,11 @@ class PositionControl:
             self.controller_record.append(
                 np.concatenate([desired_pos, current_pos, desired_vel, current_vel, desired_acc, self.jerk]))
 
+        low = self.robot_model.actuator_ctrlrange[:, 0]
+        high = self.robot_model.actuator_ctrlrange[:, 1]
+        t1 = np.clip(torque[:7], low, high)
+        t2 = np.clip(torque[7:], low, high)
+        torque = np.concatenate([t1, t2])
         return torque
 
     def _interpolate_trajectory(self, interp_order, action, i=0):
