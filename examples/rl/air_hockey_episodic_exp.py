@@ -17,6 +17,7 @@ from examples.rl.bsmp.bspline import BSpline
 from examples.rl.bsmp.context_builder import IdentityContextBuilder
 from examples.rl.bsmp.network import ConfigurationNetworkWrapper, ConfigurationTimeNetworkWrapper, LogSigmaNetworkWrapper
 from examples.rl.bsmp.promp_policy import ProMPPolicy
+from examples.rl.bsmp.prodmp_policy import ProDMPPolicy
 from examples.rl.bsmp.utils import equality_loss, limit_loss, unpack_data_airhockey
 from examples.rl.bsmp.value_network import ValueNetwork
 
@@ -46,8 +47,10 @@ torch.Tensor.__repr__ = custom_repr
 @single_experiment
 def experiment(env: str = '7dof-hit',
                n_envs: int = 1,
-               alg: str = "promp",
+               #alg: str = "promp",
+               alg: str = "prodmp",
                #alg: str = "bsmp_eppo_unstructured",
+               #alg: str = "bsmp_eppo",
                #alg: str = "bsmp_eppo_return",
                n_epochs: int = 100000,
                n_steps: int = None,
@@ -91,13 +94,13 @@ def experiment(env: str = '7dof-hit',
         value_lr=kwargs['value_lr'] if 'value_lr' in kwargs.keys() else 5e-4,
         n_epochs_policy=kwargs['n_epochs_policy'] if 'n_epochs_policy' in kwargs.keys() else 32,
         batch_size=batch_size,
-        eps_ppo=kwargs['eps_ppo'] if 'eps_ppo' in kwargs.keys() else 1e-1,
+        eps_ppo=kwargs['eps_ppo'] if 'eps_ppo' in kwargs.keys() else 5e-2,
         ent_coeff=kwargs['ent_coeff'] if 'ent_coeff' in kwargs.keys() else 0e-3,
         target_entropy=kwargs["target_entropy"] if 'target_entropy' in kwargs.keys() else -99.,
         entropy_lr=kwargs["entropy_lr"] if 'entropy_lr' in kwargs.keys() else 1e-4,
         initial_entropy_bonus=kwargs["initial_entropy_bonus"] if 'initial_entropy_bonus' in kwargs.keys() else 3e-3,
         entropy_lb=kwargs["entropy_lb"] if 'entropy_lb' in kwargs.keys() else -52,
-        initial_entropy_lb=kwargs["initial_entropy_lb"] if 'initial_entropy_lb' in kwargs.keys() else -26,
+        initial_entropy_lb=kwargs["initial_entropy_lb"] if 'initial_entropy_lb' in kwargs.keys() else 52,
         entropy_lb_ep=kwargs["entropy_lb_ep"] if 'entropy_lb_ep' in kwargs.keys() else 2000,
     )
 
@@ -340,7 +343,7 @@ def agent_builder(env_info, agent_params):
         bsmp_agent = build_agent_BSMPePPO_return(env_info, **agent_params)
     elif alg == "bsmp_eppo_unstructured":
         bsmp_agent = build_agent_BSMPePPO(env_info, **agent_params)
-    elif alg == "promp":
+    elif alg.startswith("pro"):
         bsmp_agent = build_agent_ProMPePPO(env_info, **agent_params)
     else:
         raise ValueError(f"Unknown algorithm: {alg}")
@@ -574,7 +577,13 @@ def build_agent_ProMPePPO(env_info, **agent_params):
 
     value_function_approximator = ValueNetwork(mdp_info.observation_space)
 
-    policy = ProMPPolicy(env_info, n_q_pts, n_dim)
+
+    if agent_params["alg"] == "promp":
+        policy = ProMPPolicy(env_info, n_q_pts, n_dim)
+    elif agent_params["alg"] == "prodmp":
+        policy = ProDMPPolicy(env_info, n_q_pts, n_dim)
+    else:
+        raise ValueError(f"Unknown algorithm: {agent_params['alg']}")
 
     #sigma = agent_params["sigma_init"] * torch.ones(n_trainable_pts)
     #dist = DiagonalGaussianBSMPSigmaDistribution(mu_approximator, log_sigma_approximator)

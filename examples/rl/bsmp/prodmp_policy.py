@@ -14,8 +14,9 @@ from examples.rl.bsmp.utils import unpack_data_airhockey
 from mushroom_rl.features._implementations.basis_features import BasisFeatures
 from mushroom_rl.features.basis import GaussianRBF, dGaussianRBF
 
+from mp_pytorch.mp import ProDMP, ExpDecayPhaseGenerator, ProDMPBasisGenerator, MPFactory
 
-class ProMPPolicy(Policy):
+class ProDMPPolicy(Policy):
     def __init__(self, env_info, n_q_pts, n_dim, n_pts_fixed_begin=1):
         self.n_dim = n_dim
         self._n_q_pts = n_q_pts
@@ -31,65 +32,28 @@ class ProMPPolicy(Policy):
         self.dt = env_info['dt']
         self.horizon = env_info['rl_info'].horizon
 
-        self.phi = BasisFeatures(GaussianRBF.generate([self._n_q_pts], [0.], [1.], eta=0.95))
-        self.dphi = BasisFeatures(dGaussianRBF.generate([self._n_q_pts], [0.], [1.], eta=0.95))
-        self.N = np.stack([self.phi(i) for i in np.linspace(0, 1, self.horizon)], axis=0)[None]
-        self.dN = np.stack([self.dphi(i) for i in np.linspace(0, 1, self.horizon)], axis=0)[None]
+        phase_gn = ExpDecayPhaseGenerator()
+        basis_gn = ProDMPBasisGenerator(
+            phase_generator=phase_gn,
+            num_basis=11 - 1,
+            dt=1./1024)
+        t = torch.linspace(0, self.dt * self.horizon, self.horizon).to(torch.float32)
+        b = basis_gn.basis(t)
+        db = basis_gn.vel_basis(t)
 
-        sum = np.sum(self.N, axis=-1, keepdims=True)
-        dN = self.dN
-        dsum = np.sum(dN, axis=-1, keepdims=True)
-
-        self.dN = (dN * sum - self.N * dsum) / sum**2
-        self.N = self.N / sum
-        dN_ = np.diff(self.N, axis=1)
-
-        #plt.subplot(221)
+        #plt.subplot(121)
         #for i in range(11):
-        #    plt.plot(self.N[0, :, i])
-        #plt.subplot(222)
-        #plt.plot(np.sum(self.N[0], axis=-1))
-        #plt.subplot(223)
+        #    plt.plot(t, b[:, i])
+        #plt.plot(t, b.sum(-1), "--")
+        #plt.subplot(122)
         #for i in range(11):
-        #    plt.plot(self.dN[0, :, i])
-        #for i in range(11):
-        #    plt.plot(dN_[0, :, i] * 150, '--')
-        #plt.subplot(224)
-        #plt.plot(np.sum(self.dN[0], axis=-1))
+        #    plt.plot(t, db[:, i])
         #plt.show()
+
+        self.N = b.detach().numpy()[None].astype(np.float64)
+        self.dN = db.detach().numpy()[None].astype(np.float64)
 
         self.load_policy(env_info)
-
-        x_des = np.array([1.31, 0., self.desired_ee_z])
-        #q_0 = np.array([-7.16000830e-06,  6.97494070e-01,  7.26955352e-06, -5.04898567e-01,
-        #6.60813111e-07,  1.92857916e+00,  0.00000000e+00])
-        #q_d = np.array([-5.76620323e-06,  9.46021120e-01,  7.25893860e-06, -2.91822736e-01,
-        #7.06271697e-07,  1.36568904e+00, -6.34735204e-20])
-        q_0 = np.array([-7.1600e-06,  6.9749e-01,  7.2696e-06, -5.0490e-01,  6.6081e-07,
-           1.9286e+00,  0.0000e+00])
-        q_d = np.array([-3.72483757e-06,  1.23533666e+00,  7.29216661e-06, -1.33108648e-01,
-        7.61155450e-07,  8.73456051e-01,  7.72071616e-20])
-        s = np.linspace(0., 1., self._n_q_pts)
-        sh = np.linspace(0., 1., self.horizon)
-        qs = q_0[None] * (1 - s[:, None]) + q_d[None] * s[:, None]
-        qref = q_0[None] * (1 - sh[:, None]) + q_d[None] * sh[:, None] 
-        qref = torch.tensor(qref)
-        qs_trainable = torch.tensor(qs, requires_grad=True)
-        opt = torch.optim.Adam([qs_trainable], lr=0.01)
-        for i in range(1000):
-            opt.zero_grad()
-            q = torch.tensor(self.N[0]) @ qs_trainable
-            loss = torch.sum((q - qref)**2)
-            loss.backward()
-            opt.step()
-            #print(loss)
-
-        self.q_bias = qs_trainable
-        #for i in range(6):
-        #    plt.subplot(231+i)
-        #    plt.plot(q.detach().numpy()[:, i])
-        #    plt.plot(qref.detach().numpy()[:, i])
-        #plt.show()
 
         policy_state_shape = (1,)
         super().__init__(policy_state_shape)
@@ -121,19 +85,17 @@ class ProMPPolicy(Policy):
     def compute_trajectory_from_theta(self, theta, context):
         q_0, q_d, q_dot_0, q_dot_d, q_ddot_0, q_ddot_d, puck = self.unpack_context(context)
 
+        trainable_q_cps = theta.reshape(-1, self._n_trainable_q_pts, self.n_dim)
+        trainable_q_cps = trainable_q_cps / 50.
+        middle_trainable_q_pts = torch.tanh(trainable_q_cps[:, :-1]) * np.pi
+        trainable_q_d = torch.tanh(trainable_q_cps[:, -1:]) * np.pi
+
         x_des = np.array([1.31, 0., self.desired_ee_z])
         _, q_d_bias = self.optimizer.inverse_kinematics(x_des, q_0.detach().numpy()[0, 0])
 
-        trainable_q_cps = theta.reshape(-1, self._n_trainable_q_pts, self.n_dim)
-        trainable_q_cps = trainable_q_cps / 50.
-        trainable_q = torch.tanh(trainable_q_cps) * np.pi
+        q_dot_d = trainable_q_d + q_d_bias
 
-        N0 = torch.tensor(self.N[:, 0])
-        q_cps_n0 = trainable_q + self.q_bias[None, 1:]
-        #q_cps_n0 = self.q_bias[None, 1:]
-
-        q_cps_0 = (q_0[:, 0] - N0[0, 1:] @ q_cps_n0) / N0[0, 0]
-        q_cps = torch.cat([q_cps_0[:, None], q_cps_n0], axis=-2)
+        q_cps = torch.cat([q_0, middle_trainable_q_pts, q_dot_d], axis=-2)
 
         #q = self.N @ q_cps.detach().numpy()
 
