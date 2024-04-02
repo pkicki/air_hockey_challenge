@@ -39,3 +39,5 @@ RUN pip uninstall -y mushroom-rl && \
     cd mushroom-rl && \
     git checkout ePPO && \
     pip install --no-use-pep517 -e .[all]
+
+RUN pip install mp-pytorch
