@@ -93,9 +93,9 @@ class ProDMPPolicy(Policy):
         x_des = np.array([1.31, 0., self.desired_ee_z])
         _, q_d_bias = self.optimizer.inverse_kinematics(x_des, q_0.detach().numpy()[0, 0])
 
-        q_dot_d = trainable_q_d + q_d_bias
+        q_d = trainable_q_d + torch.tensor(q_d_bias)[None, None]
 
-        q_cps = torch.cat([q_0, middle_trainable_q_pts, q_dot_d], axis=-2)
+        q_cps = torch.cat([q_0, middle_trainable_q_pts, q_d], axis=-2)
 
         #q = self.N @ q_cps.detach().numpy()
 
