@@ -126,6 +126,7 @@ class PositionControl:
         t1 = np.clip(torque[:7], low, high)
         t2 = np.clip(torque[7:], low, high)
         torque = np.concatenate([t1, t2])
+        torque = np.where(np.isfinite(torque), torque, np.zeros_like(torque))
         return torque
 
     def _interpolate_trajectory(self, interp_order, action, i=0):
