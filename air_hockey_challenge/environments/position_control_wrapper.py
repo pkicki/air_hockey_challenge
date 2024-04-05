@@ -98,7 +98,7 @@ class PositionControl:
         self.i_error += self.i_gain * error * self._timestep
         torque = self.p_gain * error + self.d_gain * (clipped_vel - current_vel) + self.i_error
 
-        torque = np.where(np.isfinite(torque), torque, np.zeros_like(torque))
+        #torque = np.where(np.isfinite(torque), torque, np.zeros_like(torque))
 
         # Acceleration FeedForward
         tau_ff = np.zeros(self.robot_model.nv)
@@ -123,12 +123,12 @@ class PositionControl:
             self.controller_record.append(
                 np.concatenate([desired_pos, current_pos, desired_vel, current_vel, desired_acc, self.jerk]))
 
-        low = self.robot_model.actuator_ctrlrange[:, 0]
-        high = self.robot_model.actuator_ctrlrange[:, 1]
-        t1 = np.clip(torque[:7], low, high)
-        t2 = np.clip(torque[7:], low, high)
-        torque = np.concatenate([t1, t2])
-        torque = np.where(np.isfinite(torque), torque, np.zeros_like(torque))
+        #low = self.robot_model.actuator_ctrlrange[:, 0]
+        #high = self.robot_model.actuator_ctrlrange[:, 1]
+        #t1 = np.clip(torque[:7], low, high)
+        #t2 = np.clip(torque[7:], low, high)
+        #torque = np.concatenate([t1, t2])
+        #torque = np.where(np.isfinite(torque), torque, np.zeros_like(torque))
         return torque
 
     def _interpolate_trajectory(self, interp_order, action, i=0):
